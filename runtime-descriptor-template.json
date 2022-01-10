@@ -1,0 +1,10 @@
+[
+  {
+    "name": "<SERVICE NAME>",
+    "version": "<VERSION>",
+    "supervisor-path": "exe-unit",
+    "runtime-path": "ya-runtime-basic-auth/ya-runtime-basic-auth",
+    "description": "Generic basic-auth service runtime",
+    "extra-args": ["--runtime-managed-image"]
+  }
+]
