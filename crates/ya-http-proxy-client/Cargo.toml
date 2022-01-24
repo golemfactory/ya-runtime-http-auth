@@ -1,0 +1,14 @@
+[package]
+name = "ya-http-proxy-client"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+client = []
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+http = { version = "0.2" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1" }

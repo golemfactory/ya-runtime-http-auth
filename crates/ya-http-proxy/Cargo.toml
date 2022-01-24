@@ -1,0 +1,62 @@
+[package]
+name = "ya-http-proxy"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+bin = [
+    "anyhow",
+    "dotenv",
+    "flexi_logger",
+    "jemallocator",
+    "structopt",
+]
+tests-e2e = []
+
+[[bin]]
+name = "ya-http-proxy"
+path = "src/bin.rs"
+required-features = [
+    "bin",
+]
+
+[dependencies]
+ya-http-proxy-client = { version = "0.1", path = "../ya-http-proxy-client"}
+
+base64 = { version = "0.13" }
+chrono = { version = "0.4", features = ["serde"] }
+envy = { version = "0.4" }
+futures = { version = "0.3" }
+hyper = { version = "0.14", features = ["full"] }
+hyper-rustls = { version = "0.23", features = ["http2"] }
+log = { version =  "0.4" }
+pin-project-lite = { version = "0.2" }
+routerify = { version = "3.0" }
+rustls = { version = "0.20" }
+rustls-pemfile = { version = "0.2" }
+serde = { version = "1", features = ["derive"] }
+serde_default = { version = "0.1" }
+serde_json = { version = "1" }
+serde_yaml = { version = "0.8" }
+thiserror = { version = "1" }
+tokio = { version = "1", features = ["io-util", "net", "rt-multi-thread", "signal"] }
+tokio-rustls = { version = "0.23"}
+toml = { version = "0.5" }
+
+anyhow = { version = "1", optional = true }
+dotenv = { version = "0.15", optional = true }
+flexi_logger = { version = "0.22", optional = true }
+jemallocator = { version = "0.3", optional = true }
+structopt = { version = "0.3", optional = true }
+
+[dev-dependencies]
+anyhow = { version = "1" }
+awc = { version = "3.0.0-beta.19", features = ["openssl"] }
+actix-web = { version = "4.0.0-beta.19" }
+actix-rt = { version = "2.6" }
+env_logger = { version = "0.9" }
+http = { version = "0.2" }
+structopt = { version = "0.3" }
+openssl = { version = "0.10" }
+tokio = { version = "1", features = ["macros"] }

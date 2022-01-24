@@ -1,15 +1,14 @@
-use crate::model::CreateService;
 use futures::FutureExt;
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 use structopt::StructOpt;
+
+use ya_http_proxy_client::model::CreateService;
 use ya_runtime_sdk::cli::parse_cli;
 use ya_runtime_sdk::env::Env;
 use ya_runtime_sdk::*;
-
-mod model;
 
 type RuntimeCli = <BasicAuthRuntime as RuntimeDef>::Cli;
 
