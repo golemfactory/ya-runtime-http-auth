@@ -25,7 +25,7 @@ pub struct BasicAuthEnv {
 #[derive(StructOpt)]
 #[structopt(rename_all = "kebab-case")]
 pub struct BasicAuthCli {
-    name: Option<String>,
+    name: String,
 }
 
 impl Env<RuntimeCli> for BasicAuthEnv {
@@ -36,10 +36,8 @@ impl Env<RuntimeCli> for BasicAuthEnv {
     fn cli(&mut self, project_name: &str, project_version: &str) -> anyhow::Result<RuntimeCli> {
         let cli: RuntimeCli = parse_cli(project_name, project_version, self.args())?;
 
-        if cli.runtime.name.is_some() {
-            // set runtime name from a positional argument
-            self.runtime_name = cli.runtime.name.clone();
-        }
+        // set runtime name from a positional argument
+        self.runtime_name = Some(cli.runtime.name.clone());
 
         Ok(cli)
     }
@@ -123,12 +121,14 @@ fn find_config(
         })
         .collect();
 
-    let cs = dir_paths
-        .into_iter()
-        .filter_map(|p| read_config(p).ok())
-        .find(|cs| cs.name == ctx.env.runtime_name().unwrap());
+    for dir_path in dir_paths {
+        let cs = read_config(dir_path)?;
+        if cs.name == ctx.env.runtime_name().unwrap() {
+            return Ok(Some(cs));
+        }
+    }
 
-    Ok(cs)
+    Ok(None)
 }
 
 fn read_config(path: PathBuf) -> anyhow::Result<CreateService> {
