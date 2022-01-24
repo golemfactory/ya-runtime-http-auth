@@ -59,6 +59,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "chrono"
+version = "0.4.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "670ad68c9088c2a963aaa298cb369688cf3f9465ce5e2d4ca10e6e0098a1ce73"
+dependencies = [
+ "libc",
+ "num-integer",
+ "num-traits",
+ "serde",
+ "time",
+ "winapi 0.3.9",
+]
+
+[[package]]
 name = "clap"
 version = "2.33.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -84,6 +98,15 @@ name = "directories"
 version = "3.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e69600ff1703123957937708eb27f7a564e48885c537782722ed0ba3189ce1d7"
+dependencies = [
+ "dirs-sys",
+]
+
+[[package]]
+name = "dirs"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca3aa72a6f96ea37bbc5aa912f6788242832f75369bdfdadcb0e38423f100059"
 dependencies = [
  "dirs-sys",
 ]
@@ -438,6 +461,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-integer"
+version = "0.1.44"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2cc698a63b549a70bc047073d2949cce27cd1c7b0a4a862d08a8031bc2801db"
+dependencies = [
+ "autocfg",
+ "num-traits",
+]
+
+[[package]]
+name = "num-traits"
+version = "0.2.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a64b1ec5cda2586e284722486d802acf1f7dbdc623e2bfc57e65ca1cd099290"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "num_cpus"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -783,6 +825,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "thiserror"
+version = "1.0.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "854babe52e4df1653706b98fcfc05843010039b406875930a70e4d9644e5c417"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "1.0.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa32fd3f627f367fe16f893e2597ae3c05020f8bba2666a4e6ea73d377e5714b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "time"
+version = "0.1.43"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca8a50ef2360fbd1eeb0ecd46795a87a19024eb4b53c5dc916ca1fd95fe62438"
+dependencies = [
+ "libc",
+ "winapi 0.3.9",
+]
+
+[[package]]
 name = "tokio"
 version = "0.2.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -951,7 +1023,9 @@ name = "ya-runtime-basic-auth"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "custom_derive",
+ "dirs",
  "enum_derive",
  "futures",
  "local_ipaddress",
@@ -959,15 +1033,15 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
+ "thiserror",
  "tokio",
  "ya-runtime-sdk",
 ]
 
 [[package]]
 name = "ya-runtime-sdk"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "289ff14b4e595736c39e57e4c7da3bd673f0f3670f097b6cd685c5be6b4fb21d"
+version = "0.2.1"
+source = "git+https://github.com/golemfactory/ya-runtime-sdk.git?rev=08b3c59d181823b1b6fe0ac6e1a7bbbe313ced55#08b3c59d181823b1b6fe0ac6e1a7bbbe313ced55"
 dependencies = [
  "anyhow",
  "directories",
@@ -985,8 +1059,7 @@ dependencies = [
 [[package]]
 name = "ya-runtime-sdk-derive"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a82cec28daa7106e038e71119a36da3e182b9f5fa13ab61ebd392cfb3b23620"
+source = "git+https://github.com/golemfactory/ya-runtime-sdk.git?rev=08b3c59d181823b1b6fe0ac6e1a7bbbe313ced55#08b3c59d181823b1b6fe0ac6e1a7bbbe313ced55"
 dependencies = [
  "proc-macro2",
  "quote",

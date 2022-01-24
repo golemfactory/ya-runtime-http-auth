@@ -9,7 +9,8 @@ license = "GPL-3.0"
 [features]
 
 [dependencies]
-ya-runtime-sdk = { version = "0.2.0", features = ["macros"] }
+#ya-runtime-sdk = { version = "0.2.0", features = ["macros"] }
+ya-runtime-sdk = { git = "https://github.com/golemfactory/ya-runtime-sdk.git", rev = "08b3c59d181823b1b6fe0ac6e1a7bbbe313ced55", features = ["macros"]}
 
 anyhow = "1.0"
 custom_derive = "0.1.7"
@@ -21,3 +22,6 @@ serde = { version = "^1.0", features = ["derive"] }
 serde_json = "1.0"
 structopt = "0.3"
 tokio = { version = "0.2", features = ["io-std", "io-util", "fs", "rt-core", "rt-threaded", "macros", "process", "time"] }
+dirs = "4.0"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
