@@ -11,3 +11,4 @@ client = []
 chrono = { version = "0.4", features = ["serde"] }
 http = { version = "0.2" }
 serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1" }
