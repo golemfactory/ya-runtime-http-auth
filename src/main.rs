@@ -54,14 +54,8 @@ impl Runtime for BasicAuthRuntime {
                     "Config file not found".to_string(),
                 ))
             }
-                .boxed_local(),
+            .boxed_local(),
         }
-        //
-        // let cs = path1
-        //     .read_dir()
-        //     .expect("Reading directory failed")
-        //     .map(|p| read_config_from_file(p.unwrap().path()).expect("Parsing config file failed"))
-        //     .find(|cs| cs.name.clone().eq(&ctx.env.runtime_name().unwrap()));
     }
 
     fn start<'a>(&mut self, _ctx: &mut Context<Self>) -> OutputResponse<'a> {
@@ -90,14 +84,6 @@ async fn main() -> anyhow::Result<()> {
     ya_runtime_sdk::run_with::<BasicAuthRuntime, _>(BasicAuthEnv::default()).await
 }
 
-fn read_config_from_file(path: PathBuf) -> anyhow::Result<CreateService> {
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-    let cs = serde_json::from_reader(reader)?;
-
-    Ok(cs)
-}
-
 fn config_lookup(ctx: &mut Context<BasicAuthRuntime>) -> Option<CreateService> {
     let mut paths = vec![];
 
@@ -110,20 +96,24 @@ fn config_lookup(ctx: &mut Context<BasicAuthRuntime>) -> Option<CreateService> {
     }
 
     if !paths.is_empty() {
-        if let Ok(cs) = check_paths(paths, ctx) {
-            return cs
+        if let Ok(cs) = find_config(paths, ctx) {
+            return cs;
         }
     }
 
     None
 }
 
-fn check_paths(paths: Vec<PathBuf>, ctx: &mut Context<BasicAuthRuntime>) -> anyhow::Result<Option<CreateService>> {
-    let mut dir_paths: Vec<PathBuf> = paths
-        .iter()
-        .map(|p| fs::read_dir(p).unwrap()
-            .map(|d| d.unwrap().path()).collect())
-        .collect();
+fn find_config(
+    paths: Vec<PathBuf>,
+    ctx: &mut Context<BasicAuthRuntime>,
+) -> anyhow::Result<Option<CreateService>> {
+    let mut dir_paths = vec![];
+
+    for path in paths {
+        let dirs = fs::read_dir(path)?;
+        dir_paths.push(dirs.filter_map(|d| d.ok()).map(|d| d.path()).collect());
+    }
 
     dir_paths = dir_paths
         .into_iter()
@@ -135,8 +125,16 @@ fn check_paths(paths: Vec<PathBuf>, ctx: &mut Context<BasicAuthRuntime>) -> anyh
 
     let cs = dir_paths
         .into_iter()
-        .map(|p| read_config_from_file(p).unwrap())
+        .filter_map(|p| read_config(p).ok())
         .find(|cs| cs.name == ctx.env.runtime_name().unwrap());
+
+    Ok(cs)
+}
+
+fn read_config(path: PathBuf) -> anyhow::Result<CreateService> {
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+    let cs = serde_json::from_reader(reader)?;
 
     Ok(cs)
 }
