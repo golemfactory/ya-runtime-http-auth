@@ -1,128 +1,85 @@
-use futures::{FutureExt, TryFutureExt};
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
-use serde::{Deserialize, Serialize};
-use std::io;
-use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use tokio::fs::OpenOptions;
-use tokio::process::{Child, Command};
+use crate::model::CreateService;
+use futures::FutureExt;
+use std::fs;
+use std::fs::File;
+use std::io::BufReader;
+use std::path::PathBuf;
+use structopt::StructOpt;
+use ya_runtime_sdk::cli::parse_cli;
+use ya_runtime_sdk::env::Env;
 use ya_runtime_sdk::*;
 
-#[derive(Deserialize, Serialize)]
-pub struct BasicAuthConf {
-    service_prefix: String,
-    public_addr: String,
-    passwd_tool_path: String,
-    passwd_file_path: String,
-    password_default_length: usize,
-}
+mod model;
 
-impl Default for BasicAuthConf {
-    fn default() -> Self {
-        BasicAuthConf {
-            service_prefix: "yagna_service".to_string(),
-            public_addr: "http://yagna.service:8080".to_string(),
-            passwd_tool_path: "htpasswd".to_string(),
-            passwd_file_path: "/etc/nginx/htpasswd".to_string(),
-            password_default_length: 15,
-        }
-    }
-}
+type RuntimeCli = <BasicAuthRuntime as RuntimeDef>::Cli;
 
 #[derive(Default, RuntimeDef)]
-#[conf(BasicAuthConf)]
-pub struct BasicAuthRuntime {
-    username: Option<String>,
-    password: Option<String>,
+#[cli(BasicAuthCli)]
+pub struct BasicAuthRuntime;
+
+#[derive(Default)]
+pub struct BasicAuthEnv {
+    runtime_name: Option<String>,
+}
+
+#[derive(StructOpt)]
+#[structopt(rename_all = "kebab-case")]
+pub struct BasicAuthCli {
+    name: Option<String>,
+}
+
+impl Env<RuntimeCli> for BasicAuthEnv {
+    fn runtime_name(&self) -> Option<String> {
+        self.runtime_name.clone()
+    }
+
+    fn cli(&mut self, project_name: &str, project_version: &str) -> anyhow::Result<RuntimeCli> {
+        let cli: RuntimeCli = parse_cli(project_name, project_version, self.args())?;
+
+        if cli.runtime.name.is_some() {
+            // set runtime name from a positional argument
+            self.runtime_name = cli.runtime.name.clone();
+        }
+
+        Ok(cli)
+    }
 }
 
 impl Runtime for BasicAuthRuntime {
     fn deploy<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
-        let path = PathBuf::from(&ctx.conf.passwd_file_path);
-
-        async move {
-            let _ = touch(&path)
-                .map_err(|_| {
-                    error::Error::from_string(
-                        "Wrong path to passwd_file_path: ".to_owned() + path.to_str().unwrap(),
-                    )
-                })
-                .await?;
-            Ok(None)
-        }
-        .boxed_local()
-    }
-
-    fn start<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
-        // Generate user & password entry with passwd tool
-        let username = format!("{}_{}", ctx.conf.service_prefix, std::process::id());
-
-        let rng = thread_rng();
-        let password: String = rng
-            .sample_iter(Alphanumeric)
-            .map(char::from)
-            .take(ctx.conf.password_default_length)
-            .collect();
-        self.username = Some(username.clone());
-        self.password = Some(password.clone());
-
-        let passwd_tool_path = ctx.conf.passwd_tool_path.clone();
-        let passwd_file_path = ctx.conf.passwd_file_path.clone();
-
-        let auth_data = serialize::json::json!(
-            {
-                "service": &ctx.conf.service_prefix,
-                "url": &ctx.conf.public_addr,
-                "auth": {
-                    "user": &self.username,
-                    "password": &self.password
-                }
+        match config_lookup(ctx) {
+            Some(_cs) => async move { Ok(None) }.boxed_local(),
+            None => async move {
+                Err(ya_runtime_sdk::error::Error::from_string(
+                    "Config file not found".to_string(),
+                ))
             }
-        );
-
-        async move {
-            add_user_to_pass_file(&passwd_tool_path, &passwd_file_path, &username, &password)
-                .map_err(|_| error::Error::from_string("Unable to add entry in passwd file"))?
-                .await?;
-
-            Ok(Some(auth_data))
+                .boxed_local(),
         }
-        .boxed_local()
+        //
+        // let cs = path1
+        //     .read_dir()
+        //     .expect("Reading directory failed")
+        //     .map(|p| read_config_from_file(p.unwrap().path()).expect("Parsing config file failed"))
+        //     .find(|cs| cs.name.clone().eq(&ctx.env.runtime_name().unwrap()));
     }
 
-    fn stop<'a>(&mut self, ctx: &mut Context<Self>) -> EmptyResponse<'a> {
-        let passwd_tool_path = ctx.conf.passwd_tool_path.clone();
-        let passwd_file_path = ctx.conf.passwd_file_path.clone();
-        let username = self.username.as_ref().unwrap().clone();
-        async move {
-            remove_user_from_pass_file(&passwd_tool_path, &passwd_file_path, &username)
-                .map_err(|_| error::Error::from_string("Unable to remove entry from passwd file"))?
-                .await?;
-            Ok(())
-        }
-        .boxed_local()
+    fn start<'a>(&mut self, _ctx: &mut Context<Self>) -> OutputResponse<'a> {
+        async move { Ok(None) }.boxed_local()
+    }
+
+    fn stop<'a>(&mut self, _ctx: &mut Context<Self>) -> EmptyResponse<'a> {
+        async move { Ok(()) }.boxed_local()
     }
 
     fn run_command<'a>(
         &mut self,
-        _cmd: RunProcess,
+        cmd: RunProcess,
         _mode: RuntimeMode,
         ctx: &mut Context<Self>,
     ) -> ProcessIdResponse<'a> {
-        let auth_data = serialize::json::json!(
-            {
-                "service": &ctx.conf.service_prefix,
-                "url": &ctx.conf.public_addr,
-                "auth": {
-                    "user": &self.username,
-                    "password": &self.password
-                }
-            }
-        );
-
         ctx.command(|mut run_ctx| async move {
-            run_ctx.stdout(format!("{}", auth_data)).await;
+            run_ctx.stdout(format!("{:?}", cmd)).await;
             Ok(())
         })
     }
@@ -130,45 +87,56 @@ impl Runtime for BasicAuthRuntime {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    ya_runtime_sdk::run::<BasicAuthRuntime>().await
+    ya_runtime_sdk::run_with::<BasicAuthRuntime, _>(BasicAuthEnv::default()).await
 }
 
-fn add_user_to_pass_file(
-    passwd_bin: &str,
-    passwd_file: &str,
-    username: &str,
-    password: &str,
-) -> std::io::Result<Child> {
-    Command::new(passwd_bin)
-        .arg("-b")
-        .arg(passwd_file)
-        .arg(username)
-        .arg(password)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
+fn read_config_from_file(path: PathBuf) -> anyhow::Result<CreateService> {
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+    let cs = serde_json::from_reader(reader)?;
+
+    Ok(cs)
 }
 
-fn remove_user_from_pass_file(
-    passwd_bin: &str,
-    passwd_file: &str,
-    username: &str,
-) -> std::io::Result<Child> {
-    Command::new(passwd_bin)
-        .arg("-D")
-        .arg(passwd_file)
-        .arg(username)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
+fn config_lookup(ctx: &mut Context<BasicAuthRuntime>) -> Option<CreateService> {
+    let mut paths = vec![];
+
+    if let Some(path) = dirs::config_dir() {
+        paths.push(path.join(env!("CARGO_PKG_NAME")))
+    }
+
+    if let Ok(path) = std::env::current_dir() {
+        paths.push(path)
+    }
+
+    if !paths.is_empty() {
+        if let Ok(cs) = check_paths(paths, ctx) {
+            return cs
+        }
+    }
+
+    None
 }
 
-// A simple implementation of `touch path` (ignores existing files)
-async fn touch(path: &Path) -> io::Result<()> {
-    OpenOptions::new()
-        .create(true)
-        .write(true)
-        .open(path)
-        .await
-        .map(|_| ())
+fn check_paths(paths: Vec<PathBuf>, ctx: &mut Context<BasicAuthRuntime>) -> anyhow::Result<Option<CreateService>> {
+    let mut dir_paths: Vec<PathBuf> = paths
+        .iter()
+        .map(|p| fs::read_dir(p).unwrap()
+            .map(|d| d.unwrap().path()).collect())
+        .collect();
+
+    dir_paths = dir_paths
+        .into_iter()
+        .filter(|p: &PathBuf| match p.extension() {
+            Some(ext) => ext == "json",
+            None => false,
+        })
+        .collect();
+
+    let cs = dir_paths
+        .into_iter()
+        .map(|p| read_config_from_file(p).unwrap())
+        .find(|cs| cs.name == ctx.env.runtime_name().unwrap());
+
+    Ok(cs)
 }
