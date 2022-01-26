@@ -3144,12 +3144,17 @@ dependencies = [
 name = "ya-http-proxy-client"
 version = "0.1.0"
 dependencies = [
+ "actix-http 2.2.2",
  "anyhow",
  "awc 2.0.3",
  "chrono",
+ "heck",
  "http",
+ "log",
  "serde",
  "serde_json",
+ "thiserror",
+ "url",
 ]
 
 [[package]]
