@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -7,6 +9,7 @@ use awc::Connector;
 use http::{Method, Uri};
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use serde::{Deserialize, Serialize};
+
 use ya_http_proxy::{Management, ProxyConf, ProxyManager};
 use ya_http_proxy_client::model;
 
@@ -28,8 +31,7 @@ impl WebClient {
     pub fn new_permissive_tls(url: String, username: &str, password: &str) -> Result<Self> {
         let mut builder = SslConnector::builder(SslMethod::tls_client())?;
         builder.set_verify(SslVerifyMode::NONE);
-        let builder = builder.build();
-        let connector = Connector::new().openssl(builder);
+        let connector = Connector::new().openssl(builder.build());
         let inner = awc::Client::builder().connector(connector).finish();
 
         Ok(Self {

@@ -812,6 +812,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dirs"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca3aa72a6f96ea37bbc5aa912f6788242832f75369bdfdadcb0e38423f100059"
+dependencies = [
+ "dirs-sys",
+]
+
+[[package]]
 name = "dirs-sys"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3169,7 +3178,9 @@ name = "ya-runtime-basic-auth"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "custom_derive",
+ "dirs",
  "enum_derive",
  "futures",
  "local_ipaddress",
@@ -3177,15 +3188,16 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
+ "thiserror",
  "tokio 0.2.25",
+ "ya-http-proxy-client",
  "ya-runtime-sdk",
 ]
 
 [[package]]
 name = "ya-runtime-sdk"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "289ff14b4e595736c39e57e4c7da3bd673f0f3670f097b6cd685c5be6b4fb21d"
+version = "0.2.1"
+source = "git+https://github.com/golemfactory/ya-runtime-sdk.git?rev=08b3c59d181823b1b6fe0ac6e1a7bbbe313ced55#08b3c59d181823b1b6fe0ac6e1a7bbbe313ced55"
 dependencies = [
  "anyhow",
  "directories",
@@ -3203,8 +3215,7 @@ dependencies = [
 [[package]]
 name = "ya-runtime-sdk-derive"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a82cec28daa7106e038e71119a36da3e182b9f5fa13ab61ebd392cfb3b23620"
+source = "git+https://github.com/golemfactory/ya-runtime-sdk.git?rev=08b3c59d181823b1b6fe0ac6e1a7bbbe313ced55#08b3c59d181823b1b6fe0ac6e1a7bbbe313ced55"
 dependencies = [
  "proc-macro2",
  "quote",
