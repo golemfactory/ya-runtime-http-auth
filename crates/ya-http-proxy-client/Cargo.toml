@@ -8,7 +8,12 @@ default = []
 client = []
 
 [dependencies]
+actix-http = {version = "2" }
+anyhow = { version = "1" }
+awc = { version = "2" }
 chrono = { version = "0.4", features = ["serde"] }
 http = { version = "0.2" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
+log = { version ="0.4" }
+thiserror = {version ="1.0"}
