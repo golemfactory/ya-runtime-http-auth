@@ -17,21 +17,9 @@ pub enum Error {
     #[error("Invalid UTF8 string: {0}")]
     Utf8Error(#[from] std::str::Utf8Error),
     #[error("AWC payload error: {0}")]
-    PayloadError(PayloadError),
+    PayloadError(#[from] PayloadError),
     #[error("Invalid URI string: {0}")]
-    InvalidUriError(InvalidUri),
-}
-
-impl From<PayloadError> for Error {
-    fn from(e: PayloadError) -> Self {
-        Error::PayloadError(e)
-    }
-}
-
-impl From<InvalidUri> for Error {
-    fn from(e: InvalidUri) -> Self {
-        Error::InvalidUriError(e)
-    }
+    InvalidUriError(#[from] InvalidUri),
 }
 
 impl Error {

@@ -23,53 +23,41 @@ impl ManagementApi {
     }
 
     pub async fn get_service(&self, service_name: &str) -> Result<Service> {
-        let url = url_format!("services/{service_name}", service_name);
+        let url = format!("services/{}", service_name);
         self.client.get(&url).await
     }
 
     pub async fn delete_service(&self, service_name: &str) -> Result<()> {
-        let url = url_format!("services/{service_name}", service_name);
+        let url = format!("services/{}", service_name);
         self.client.delete(&url).await
     }
 
     // User management per service
 
     pub async fn get_users(&self, service_name: &str) -> Result<Vec<User>> {
-        let url = url_format!("services/{service_name}/users", service_name);
+        let url = format!("services/{}/users", service_name);
         self.client.get(&url).await
     }
 
     pub async fn create_user(&self, service_name: &str, cu: &CreateUser) -> Result<CreateUser> {
-        let url = url_format!("services/{service_name}/users", service_name);
+        let url = format!("services/{}/users", service_name);
         self.client.post(&url, cu).await
     }
 
     pub async fn get_user(&self, service_name: &str, user_name: &str) -> Result<User> {
-        let url = url_format!(
-            "services/{service_name}/users/{user_name}",
-            service_name,
-            user_name
-        );
+        let url = format!("services/{}/users/{}", service_name, user_name);
         self.client.get(&url).await
     }
 
     pub async fn delete_user(&self, service_name: &str, user_name: &str) -> Result<()> {
-        let url = url_format!(
-            "services/{service_name}/users/{user_name}",
-            service_name,
-            user_name
-        );
+        let url = format!("services/{}/users/{}", service_name, user_name);
         self.client.delete(&url).await
     }
 
     // User statistics
 
     pub async fn get_user_stats(&self, service_name: &str, user_name: &str) -> Result<UserStats> {
-        let url = url_format!(
-            "services/{service_name}/users/{user_name}/stats",
-            service_name,
-            user_name
-        );
+        let url = format!("services/{}/users/{}/stats", service_name, user_name);
         self.client.get(&url).await
     }
 
@@ -78,10 +66,9 @@ impl ManagementApi {
         service_name: &str,
         user_name: &str,
     ) -> Result<UserEndpointStats> {
-        let url = url_format!(
-            "services/{service_name}/users/{user_name}/endpoints/stats",
-            service_name,
-            user_name
+        let url = format!(
+            "services/{}/users/{}/endpoints/stats",
+            service_name, user_name
         );
         self.client.get(&url).await
     }

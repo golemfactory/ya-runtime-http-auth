@@ -3139,13 +3139,11 @@ dependencies = [
  "anyhow",
  "awc 2.0.3",
  "chrono",
- "heck",
  "http",
  "log",
  "serde",
  "serde_json",
  "thiserror",
- "url",
 ]
 
 [[package]]
