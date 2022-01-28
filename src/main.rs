@@ -1,11 +1,18 @@
+mod lock;
+
 use futures::FutureExt;
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 use structopt::StructOpt;
+use tokio::process::Command;
 
+use crate::lock::{with_lock_ext, LockFile};
+use ya_http_proxy_client::api::ManagementApi;
 use ya_http_proxy_client::model::CreateService;
+use ya_http_proxy_client::web::WebClient;
 use ya_runtime_sdk::cli::parse_cli;
 use ya_runtime_sdk::env::Env;
 use ya_runtime_sdk::*;
@@ -14,7 +21,9 @@ type RuntimeCli = <BasicAuthRuntime as RuntimeDef>::Cli;
 
 #[derive(Default, RuntimeDef)]
 #[cli(BasicAuthCli)]
-pub struct BasicAuthRuntime;
+pub struct BasicAuthRuntime {
+    client: WebClient,
+}
 
 #[derive(Default)]
 pub struct BasicAuthEnv {
@@ -56,7 +65,15 @@ impl Runtime for BasicAuthRuntime {
     }
 
     fn start<'a>(&mut self, _ctx: &mut Context<Self>) -> OutputResponse<'a> {
-        async move { Ok(None) }.boxed_local()
+        let api = ManagementApi::new(&self.client.clone());
+
+        async move {
+            match ya_http_proxy(api).await {
+                Ok(()) => Ok(None),
+                Err(e) => Err(ya_runtime_sdk::error::Error::from(e)),
+            }
+        }
+        .boxed_local()
     }
 
     fn stop<'a>(&mut self, _ctx: &mut Context<Self>) -> EmptyResponse<'a> {
@@ -136,4 +153,37 @@ fn read_config(path: PathBuf) -> anyhow::Result<CreateService> {
     let cs = serde_json::from_reader(reader)?;
 
     Ok(cs)
+}
+
+async fn ya_http_proxy(api: ManagementApi) -> anyhow::Result<()> {
+    let mut lock = LockFile::new(with_lock_ext(std::env::current_dir().unwrap_or_default()));
+    let now = Instant::now();
+
+    loop {
+        match api.get_services().await {
+            Ok(_) => {
+                break;
+            }
+            Err(_) => {
+                if lock.is_locked() {
+                    if Instant::now() - now >= Duration::from_secs(10) {
+                        anyhow::bail!("timeout")
+                    }
+                    tokio::time::delay_for(Duration::from_millis(500)).await;
+                    continue;
+                }
+
+                lock.lock()?;
+                Command::new("ya-http-proxy").kill_on_drop(false);
+                lock.unlock()?;
+
+                if let Err(e) = api.get_services().await {
+                    anyhow::bail!(e.to_string());
+                }
+                break;
+            }
+        }
+    }
+
+    Ok(())
 }

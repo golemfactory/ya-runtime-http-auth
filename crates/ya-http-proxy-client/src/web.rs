@@ -1,16 +1,31 @@
 use http::{Method, Uri};
 use serde::{Deserialize, Serialize};
+use std::env;
+use std::str::FromStr;
 
 use crate::model::ErrorResponse;
 use crate::{Error, Result};
 
-/// Body size limit: 8 MiB
+pub const MANAGEMENT_API_URL_ENV_VAR: &str = "MANAGEMENT_API_URL";
+pub const DEFAULT_MANAGEMENT_API_URL: &str = "http://127.0.0.1:1234";
 const MAX_BODY_SIZE: usize = 8 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct WebClient {
     url: Uri,
     inner: awc::Client,
+}
+
+impl Default for WebClient {
+    fn default() -> Self {
+        let url = env::var(MANAGEMENT_API_URL_ENV_VAR)
+            .unwrap_or_else(|_| DEFAULT_MANAGEMENT_API_URL.into());
+
+        WebClient {
+            url: Uri::from_str(url.as_str()).unwrap_or_default(),
+            ..Default::default()
+        }
+    }
 }
 
 impl WebClient {
