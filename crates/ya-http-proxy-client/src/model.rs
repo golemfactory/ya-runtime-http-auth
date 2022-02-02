@@ -139,6 +139,22 @@ pub struct ErrorResponse {
     pub message: String,
 }
 
+/// Global statistics
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalStats {
+    pub users: usize,
+    pub services: usize,
+    pub requests: Requests,
+}
+
+/// Requests summary
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Requests {
+    pub total: usize,
+}
+
 fn next_service_name() -> String {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static ATOMIC_ID: AtomicUsize = AtomicUsize::new(0);

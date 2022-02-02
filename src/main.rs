@@ -1,17 +1,20 @@
 mod lock;
 
+use futures::future::{AbortHandle, Abortable};
 use futures::FutureExt;
+use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
+use std::sync::RwLock;
 use std::time::{Duration, Instant};
 use structopt::StructOpt;
 use tokio::process::Command;
 
 use crate::lock::{with_lock_ext, LockFile};
 use ya_http_proxy_client::api::ManagementApi;
-use ya_http_proxy_client::model::CreateService;
+use ya_http_proxy_client::model::{CreateService, CreateUser, GlobalStats, Requests};
 use ya_http_proxy_client::web::WebClient;
 use ya_runtime_sdk::cli::parse_cli;
 use ya_runtime_sdk::env::Env;
@@ -19,10 +22,16 @@ use ya_runtime_sdk::*;
 
 type RuntimeCli = <BasicAuthRuntime as RuntimeDef>::Cli;
 
+const COUNTER_NAME: &str = "golem.runtime.http-auth.requests.counter";
+const INTERVAL: Duration = Duration::from_secs(2);
+
 #[derive(Default, RuntimeDef)]
 #[cli(BasicAuthCli)]
 pub struct BasicAuthRuntime {
     client: WebClient,
+    handle: Option<AbortHandle>,
+    users: RwLock<HashMap<CreateService, CreateUser>>,
+    global_stats: Option<GlobalStats>,
 }
 
 #[derive(Default)]
@@ -64,10 +73,63 @@ impl Runtime for BasicAuthRuntime {
         }
     }
 
-    fn start<'a>(&mut self, _ctx: &mut Context<Self>) -> OutputResponse<'a> {
+    fn start<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
         let api = ManagementApi::new(&self.client.clone());
 
+        let mut emitter = match ctx.emitter.clone() {
+            Some(emitter) => emitter,
+            None => {
+                let err = anyhow::anyhow!("Not running in server mode");
+                return futures::future::err(err.into()).boxed_local();
+            }
+        };
+
         async move {
+            let (handle, reg) = AbortHandle::new_pair();
+            tokio::task::spawn_local(Abortable::new(
+                async {
+                    let api_cloned = api.clone();
+                    loop {
+                        let mut total_req = 0_usize;
+                        let mut total_users = 0_usize;
+                        let mut total_services = 0_usize;
+
+                        if let Ok(services) = api_cloned.get_services().await {
+                            total_services = services.iter().count()
+                        }
+
+                        if let Ok(users) = self.users.read() {
+                            for (s, u) in users.iter() {
+                                let us = api_cloned
+                                    .get_user_stats(s.name.as_str(), u.username.as_str())
+                                    .await;
+                                if let Ok(us) = us {
+                                    total_users += 1;
+                                    total_req += us.requests
+                                }
+                            }
+                        }
+
+                        tokio::time::delay_for(INTERVAL).await;
+
+                        self.global_stats = Some(GlobalStats {
+                            users: total_users,
+                            services: total_services,
+                            requests: Requests { total: total_req },
+                        });
+
+                        emitter
+                            .counter(RuntimeCounter {
+                                name: COUNTER_NAME.to_string(),
+                                value: total_req as f64,
+                            })
+                            .await;
+                    }
+                },
+                reg,
+            ));
+            self.handle = Some(handle);
+
             match ya_http_proxy(api).await {
                 Ok(()) => Ok(None),
                 Err(e) => Err(ya_runtime_sdk::error::Error::from(e)),
@@ -76,7 +138,15 @@ impl Runtime for BasicAuthRuntime {
         .boxed_local()
     }
 
-    fn stop<'a>(&mut self, _ctx: &mut Context<Self>) -> EmptyResponse<'a> {
+    fn stop<'a>(&mut self, ctx: &mut Context<Self>) -> EmptyResponse<'a> {
+        let mut total_req = 0_usize;
+        if let Some(gs) = self.global_stats.take() {
+            total_req = gs.requests.total
+        }
+        log::info! {"Total requests: {}", total_req}
+        if let Some(handle) = self.handle.take() {
+            handle.abort();
+        }
         async move { Ok(()) }.boxed_local()
     }
 
@@ -90,6 +160,30 @@ impl Runtime for BasicAuthRuntime {
             run_ctx.stdout(format!("{:?}", cmd)).await;
             Ok(())
         })
+    }
+
+    fn offer<'a>(&mut self, _ctx: &mut Context<Self>) -> OutputResponse<'a> {
+        todo!()
+    }
+
+    fn test<'a>(&mut self, ctx: &mut Context<Self>) -> EmptyResponse<'a> {
+        if config_lookup(ctx).is_none() {
+            return async move {
+                Err(ya_runtime_sdk::error::Error::from_string(
+                    "Config file not found".to_string(),
+                ))
+            }
+            .boxed_local();
+        };
+        let api = ManagementApi::new(&self.client.clone());
+
+        async move {
+            match ya_http_proxy(api).await {
+                Ok(()) => Ok(()),
+                Err(e) => Err(ya_runtime_sdk::error::Error::from(e)),
+            }
+        }
+        .boxed_local()
     }
 }
 
@@ -157,7 +251,7 @@ fn read_config(path: PathBuf) -> anyhow::Result<CreateService> {
 
 async fn ya_http_proxy(api: ManagementApi) -> anyhow::Result<()> {
     let mut lock = LockFile::new(with_lock_ext(std::env::current_dir().unwrap_or_default()));
-    let now = Instant::now();
+    let timestamp = Instant::now();
 
     loop {
         match api.get_services().await {
@@ -166,7 +260,7 @@ async fn ya_http_proxy(api: ManagementApi) -> anyhow::Result<()> {
             }
             Err(_) => {
                 if lock.is_locked() {
-                    if Instant::now() - now >= Duration::from_secs(10) {
+                    if Instant::now() - timestamp >= Duration::from_secs(10) {
                         anyhow::bail!("timeout")
                     }
                     tokio::time::delay_for(Duration::from_millis(500)).await;

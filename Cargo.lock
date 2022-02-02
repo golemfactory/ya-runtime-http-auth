@@ -3195,6 +3195,7 @@ dependencies = [
  "fs2",
  "futures",
  "local_ipaddress",
+ "log",
  "rand 0.8.3",
  "serde",
  "serde_json",
