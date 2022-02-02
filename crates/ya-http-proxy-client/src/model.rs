@@ -145,14 +145,7 @@ pub struct ErrorResponse {
 pub struct GlobalStats {
     pub users: usize,
     pub services: usize,
-    pub requests: Requests,
-}
-
-/// Requests summary
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Requests {
-    pub total: usize,
+    pub requests: UserStats,
 }
 
 fn next_service_name() -> String {

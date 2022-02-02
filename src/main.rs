@@ -7,14 +7,15 @@ use std::fs;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
-use std::sync::RwLock;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 use structopt::StructOpt;
 use tokio::process::Command;
+use tokio::sync::RwLock;
 
 use crate::lock::{with_lock_ext, LockFile};
 use ya_http_proxy_client::api::ManagementApi;
-use ya_http_proxy_client::model::{CreateService, CreateUser, GlobalStats, Requests};
+use ya_http_proxy_client::model::{CreateService, CreateUser, GlobalStats, UserStats};
 use ya_http_proxy_client::web::WebClient;
 use ya_runtime_sdk::cli::parse_cli;
 use ya_runtime_sdk::env::Env;
@@ -24,14 +25,16 @@ type RuntimeCli = <BasicAuthRuntime as RuntimeDef>::Cli;
 
 const COUNTER_NAME: &str = "golem.runtime.http-auth.requests.counter";
 const INTERVAL: Duration = Duration::from_secs(2);
+const TIMEOUT: Duration = Duration::from_secs(10);
+const SLEEP: Duration = Duration::from_millis(500);
 
 #[derive(Default, RuntimeDef)]
 #[cli(BasicAuthCli)]
 pub struct BasicAuthRuntime {
-    client: WebClient,
-    handle: Option<AbortHandle>,
-    users: RwLock<HashMap<CreateService, CreateUser>>,
-    global_stats: Option<GlobalStats>,
+    client: Rc<RwLock<WebClient>>,
+    handle: Rc<RwLock<Option<AbortHandle>>>,
+    users: Rc<RwLock<HashMap<CreateService, CreateUser>>>,
+    global_stats: Rc<RwLock<Option<GlobalStats>>>,
 }
 
 #[derive(Default)]
@@ -74,8 +77,6 @@ impl Runtime for BasicAuthRuntime {
     }
 
     fn start<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
-        let api = ManagementApi::new(&self.client.clone());
-
         let mut emitter = match ctx.emitter.clone() {
             Some(emitter) => emitter,
             None => {
@@ -84,38 +85,45 @@ impl Runtime for BasicAuthRuntime {
             }
         };
 
+        let users = self.users.clone();
+        let global_stats = self.global_stats.clone();
+        let handle = self.handle.clone();
+        let c1 = self.client.clone();
+        let c2 = self.client.clone();
+
         async move {
-            let (handle, reg) = AbortHandle::new_pair();
+            let (h, reg) = AbortHandle::new_pair();
             tokio::task::spawn_local(Abortable::new(
-                async {
-                    let api_cloned = api.clone();
+                async move {
+                    let client = c1.read().await;
+                    let api = ManagementApi::new(&client);
                     loop {
                         let mut total_req = 0_usize;
                         let mut total_users = 0_usize;
                         let mut total_services = 0_usize;
 
-                        if let Ok(services) = api_cloned.get_services().await {
-                            total_services = services.iter().count()
+                        if let Ok(services) = api.get_services().await {
+                            total_services = services.iter().len()
                         }
 
-                        if let Ok(users) = self.users.read() {
-                            for (s, u) in users.iter() {
-                                let us = api_cloned
-                                    .get_user_stats(s.name.as_str(), u.username.as_str())
-                                    .await;
-                                if let Ok(us) = us {
-                                    total_users += 1;
-                                    total_req += us.requests
-                                }
+                        for (s, u) in users.read().await.iter() {
+                            let us = api
+                                .get_user_stats(s.name.as_str(), u.username.as_str())
+                                .await;
+                            if let Ok(us) = us {
+                                total_users += 1;
+                                total_req += us.requests
                             }
                         }
 
                         tokio::time::delay_for(INTERVAL).await;
 
-                        self.global_stats = Some(GlobalStats {
+                        global_stats.write().await.replace(GlobalStats {
                             users: total_users,
                             services: total_services,
-                            requests: Requests { total: total_req },
+                            requests: UserStats {
+                                requests: total_req,
+                            },
                         });
 
                         emitter
@@ -128,9 +136,12 @@ impl Runtime for BasicAuthRuntime {
                 },
                 reg,
             ));
-            self.handle = Some(handle);
+            handle.write().await.replace(h);
 
-            match ya_http_proxy(api).await {
+            let client = c2.read().await;
+            let api2 = ManagementApi::new(&client);
+
+            match ya_http_proxy(api2).await {
                 Ok(()) => Ok(None),
                 Err(e) => Err(ya_runtime_sdk::error::Error::from(e)),
             }
@@ -138,16 +149,18 @@ impl Runtime for BasicAuthRuntime {
         .boxed_local()
     }
 
-    fn stop<'a>(&mut self, ctx: &mut Context<Self>) -> EmptyResponse<'a> {
-        let mut total_req = 0_usize;
-        if let Some(gs) = self.global_stats.take() {
-            total_req = gs.requests.total
+    fn stop<'a>(&mut self, _ctx: &mut Context<Self>) -> EmptyResponse<'a> {
+        let handle = self.handle.clone();
+
+        async move {
+            //raz jeszcze emitter
+            if let Some(handle) = handle.read().await.clone() {
+                handle.abort();
+            }
+
+            Ok(())
         }
-        log::info! {"Total requests: {}", total_req}
-        if let Some(handle) = self.handle.take() {
-            handle.abort();
-        }
-        async move { Ok(()) }.boxed_local()
+        .boxed_local()
     }
 
     fn run_command<'a>(
@@ -175,9 +188,10 @@ impl Runtime for BasicAuthRuntime {
             }
             .boxed_local();
         };
-        let api = ManagementApi::new(&self.client.clone());
-
+        let c = self.client.clone();
         async move {
+            let client = c.read().await;
+            let api = ManagementApi::new(&client);
             match ya_http_proxy(api).await {
                 Ok(()) => Ok(()),
                 Err(e) => Err(ya_runtime_sdk::error::Error::from(e)),
@@ -260,18 +274,26 @@ async fn ya_http_proxy(api: ManagementApi) -> anyhow::Result<()> {
             }
             Err(_) => {
                 if lock.is_locked() {
-                    if Instant::now() - timestamp >= Duration::from_secs(10) {
+                    if Instant::now() - timestamp >= TIMEOUT {
                         anyhow::bail!("timeout")
                     }
-                    tokio::time::delay_for(Duration::from_millis(500)).await;
+                    tokio::time::delay_for(SLEEP).await;
                     continue;
                 }
 
                 lock.lock()?;
-                Command::new("ya-http-proxy").kill_on_drop(false);
+                let _child = Command::new("ya-http-proxy").kill_on_drop(false).spawn()?;
                 lock.unlock()?;
 
                 if let Err(e) = api.get_services().await {
+                    // let pid = child.id();
+                    // if pid == ... {
+                    //     //ponowic sprawdzenie
+                    //     if Instant::now() - timestamp >= Duration::from_secs(10) {
+                    //         anyhow::bail!("timeout")
+                    //     }
+                    //     tokio::time::delay_for(Duration::from_millis(500)).await;
+                    // }
                     anyhow::bail!(e.to_string());
                 }
                 break;
