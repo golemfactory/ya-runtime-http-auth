@@ -149,11 +149,35 @@ impl Runtime for BasicAuthRuntime {
         .boxed_local()
     }
 
-    fn stop<'a>(&mut self, _ctx: &mut Context<Self>) -> EmptyResponse<'a> {
+    fn stop<'a>(&mut self, ctx: &mut Context<Self>) -> EmptyResponse<'a> {
+        let mut emitter = match ctx.emitter.clone() {
+            Some(emitter) => emitter,
+            None => {
+                let err = anyhow::anyhow!("Not running in server mode");
+                return futures::future::err(err.into()).boxed_local();
+            }
+        };
+
         let p = self.basic_auth.clone();
 
         async move {
-            //raz jeszcze emitter
+            let mut total_req = 0_usize;
+
+            for (s, u) in p.read().await.users.iter() {
+                let us = ManagementApi::new(&p.read().await.client)
+                    .get_user_stats(s.name.as_str(), u.username.as_str())
+                    .await;
+                if let Ok(us) = us {
+                    total_req += us.requests
+                }
+            }
+            emitter
+                .counter(RuntimeCounter {
+                    name: COUNTER_NAME.to_string(),
+                    value: total_req as f64,
+                })
+                .await;
+
             if let Some(handle) = &p.read().await.handle {
                 handle.abort();
             }
