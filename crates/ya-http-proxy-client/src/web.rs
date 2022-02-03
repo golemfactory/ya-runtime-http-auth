@@ -23,7 +23,7 @@ impl Default for WebClient {
 
         WebClient {
             url: Uri::from_str(url.as_str()).unwrap_or_default(),
-            ..Default::default()
+            inner: Default::default(),
         }
     }
 }

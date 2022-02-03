@@ -10,9 +10,10 @@ license = "GPL-3.0"
 
 [dependencies]
 #ya-runtime-sdk = { version = "0.2.0", features = ["macros"] }
-ya-runtime-sdk = { git = "https://github.com/golemfactory/ya-runtime-sdk.git", rev = "08b3c59d181823b1b6fe0ac6e1a7bbbe313ced55", features = ["macros"]}
+ya-runtime-sdk = { git = "https://github.com/golemfactory/ya-runtime-sdk.git", rev = "62c2dfec030279e097d6ddd865322477cc03a460", features = ["macros"]}
 ya-http-proxy-client = { version = "0.1", path = "crates/ya-http-proxy-client"}
 
+actix-rt = "1.0.0"
 anyhow = "1.0"
 custom_derive = "0.1.7"
 enum_derive = "0.1.7"

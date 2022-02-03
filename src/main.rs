@@ -150,11 +150,11 @@ impl Runtime for BasicAuthRuntime {
     }
 
     fn stop<'a>(&mut self, _ctx: &mut Context<Self>) -> EmptyResponse<'a> {
-        let runtime = self.basic_auth.clone();
+        let p = self.basic_auth.clone();
 
         async move {
             //raz jeszcze emitter
-            if let Some(handle) = &runtime.read().await.handle {
+            if let Some(handle) = &p.read().await.handle {
                 handle.abort();
             }
 
@@ -188,10 +188,10 @@ impl Runtime for BasicAuthRuntime {
             }
             .boxed_local();
         };
-        let runtime = self.basic_auth.clone();
+        let p = self.basic_auth.clone();
 
         async move {
-            let api = ManagementApi::new(&runtime.read().await.client);
+            let api = ManagementApi::new(&p.read().await.client);
             match ya_http_proxy(api).await {
                 Ok(()) => Ok(()),
                 Err(e) => Err(ya_runtime_sdk::error::Error::from(e)),
@@ -201,9 +201,9 @@ impl Runtime for BasicAuthRuntime {
     }
 }
 
-#[tokio::main]
+#[actix_rt::main]
 async fn main() -> anyhow::Result<()> {
-    ya_runtime_sdk::run_with::<BasicAuthRuntime, _>(BasicAuthEnv::default()).await
+    ya_runtime_sdk::run_local_with::<BasicAuthRuntime, _>(BasicAuthEnv::default()).await
 }
 
 fn config_lookup(ctx: &mut Context<BasicAuthRuntime>) -> Option<CreateService> {
@@ -285,16 +285,15 @@ async fn ya_http_proxy(api: ManagementApi) -> anyhow::Result<()> {
                 let _child = Command::new("ya-http-proxy").kill_on_drop(false).spawn()?;
                 lock.unlock()?;
 
-                if let Err(e) = api.get_services().await {
-                    // let pid = child.id();
-                    // if pid == ... {
-                    //     //ponowic sprawdzenie
-                    //     if Instant::now() - timestamp >= Duration::from_secs(10) {
-                    //         anyhow::bail!("timeout")
-                    //     }
-                    //     tokio::time::delay_for(Duration::from_millis(500)).await;
-                    // }
-                    anyhow::bail!(e.to_string());
+                if let Err(_) = api.get_services().await {
+                    if Instant::now() - timestamp >= TIMEOUT {
+                        anyhow::bail!("timeout")
+                    }
+                    tokio::time::delay_for(SLEEP).await;
+                    if let Err(e) = api.get_services().await {
+                        anyhow::bail!(e.to_string())
+                    }
+                    break;
                 }
                 break;
             }
