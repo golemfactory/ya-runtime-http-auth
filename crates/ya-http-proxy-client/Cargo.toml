@@ -3,11 +3,9 @@ name = "ya-http-proxy-client"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-default = []
-client = []
-
 [dependencies]
+ya-http-proxy-model = { version = "0.1", path = "../ya-http-proxy-model"}
+
 actix-http = {version = "1" }
 anyhow = { version = "1" }
 awc = { version = "1" }

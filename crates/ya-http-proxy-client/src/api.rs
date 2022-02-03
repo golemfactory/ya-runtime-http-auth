@@ -1,5 +1,5 @@
-use crate::model::{CreateService, CreateUser, Service, User, UserEndpointStats, UserStats};
 use crate::{web::WebClient, Result};
+use ya_http_proxy_model::{CreateService, CreateUser, Service, User, UserEndpointStats, UserStats};
 
 #[derive(Clone)]
 pub struct ManagementApi {

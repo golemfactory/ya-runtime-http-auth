@@ -15,8 +15,8 @@ use tokio::sync::RwLock;
 
 use crate::lock::{with_lock_ext, LockFile};
 use ya_http_proxy_client::api::ManagementApi;
-use ya_http_proxy_client::model::{CreateService, CreateUser, GlobalStats, UserStats};
 use ya_http_proxy_client::web::WebClient;
+use ya_http_proxy_model::{CreateService, CreateUser, GlobalStats, UserStats};
 use ya_runtime_sdk::cli::parse_cli;
 use ya_runtime_sdk::env::Env;
 use ya_runtime_sdk::*;

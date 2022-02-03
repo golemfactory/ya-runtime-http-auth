@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::conf::common::CommonConf;
-use ya_http_proxy_client::deser;
+use ya_http_proxy_model::deser;
 
 /// Configuration for the HTTP client used by a Proxy
 #[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

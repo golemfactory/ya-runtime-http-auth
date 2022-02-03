@@ -5,7 +5,7 @@ use routerify::prelude::RequestExt;
 use crate::api::{ApiErrorKind, RouteError};
 use crate::proxy::ProxyManager;
 use crate::UserError;
-use ya_http_proxy_client::model;
+use ya_http_proxy_model as model;
 
 /// Lists services
 pub async fn get_services(req: Request<Body>) -> Result<Response<Body>, RouteError> {

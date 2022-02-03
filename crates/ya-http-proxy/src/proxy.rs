@@ -14,7 +14,7 @@ use crate::conf::ProxyConf;
 use crate::error::{Error, ProxyError, ServiceError, UserError};
 use crate::proxy::handler::forward_req;
 use crate::proxy::stream::TlsAddrStream;
-use ya_http_proxy_client::model;
+use ya_http_proxy_model as model;
 
 mod client;
 mod handler;

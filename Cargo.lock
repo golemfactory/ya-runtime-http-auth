@@ -3087,7 +3087,7 @@ dependencies = [
  "tokio 1.15.0",
  "tokio-rustls",
  "toml",
- "ya-http-proxy-client",
+ "ya-http-proxy-model",
 ]
 
 [[package]]
@@ -3103,6 +3103,17 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "ya-http-proxy-model",
+]
+
+[[package]]
+name = "ya-http-proxy-model"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "http",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3144,6 +3155,7 @@ dependencies = [
  "thiserror",
  "tokio 0.2.25",
  "ya-http-proxy-client",
+ "ya-http-proxy-model",
  "ya-runtime-sdk",
 ]
 

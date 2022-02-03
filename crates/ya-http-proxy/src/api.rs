@@ -12,7 +12,7 @@ use routerify::{Middleware, RouteError, Router, RouterService};
 use crate::error::{Error, ProxyError, ServiceError, UserError};
 use crate::proxy::ProxyManager;
 use crate::ManagementError;
-use ya_http_proxy_client::model;
+use ya_http_proxy_model as model;
 
 mod handler;
 

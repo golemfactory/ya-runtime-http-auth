@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-use ya_http_proxy_client::deser;
+use ya_http_proxy_model::deser;
 
 /// Configuration options common to both client and server
 #[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

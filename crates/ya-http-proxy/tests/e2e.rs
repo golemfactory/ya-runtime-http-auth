@@ -11,7 +11,7 @@ use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use serde::{Deserialize, Serialize};
 
 use ya_http_proxy::{Management, ProxyConf, ProxyManager};
-use ya_http_proxy_client::model;
+use ya_http_proxy_model as model;
 
 struct WebClient {
     url: Uri,
