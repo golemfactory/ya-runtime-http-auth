@@ -31,10 +31,15 @@ const SLEEP: Duration = Duration::from_millis(500);
 #[derive(Default, RuntimeDef)]
 #[cli(BasicAuthCli)]
 pub struct BasicAuthRuntime {
-    client: Rc<RwLock<WebClient>>,
-    handle: Rc<RwLock<Option<AbortHandle>>>,
-    users: Rc<RwLock<HashMap<CreateService, CreateUser>>>,
-    global_stats: Rc<RwLock<Option<GlobalStats>>>,
+    basic_auth: Rc<RwLock<BasicAuth>>,
+}
+
+#[derive(Default)]
+pub struct BasicAuth {
+    client: WebClient,
+    handle: Option<AbortHandle>,
+    users: HashMap<CreateService, CreateUser>,
+    global_stats: Option<GlobalStats>,
 }
 
 #[derive(Default)]
@@ -85,29 +90,27 @@ impl Runtime for BasicAuthRuntime {
             }
         };
 
-        let users = self.users.clone();
-        let global_stats = self.global_stats.clone();
-        let handle = self.handle.clone();
-        let c1 = self.client.clone();
-        let c2 = self.client.clone();
+        let p1 = self.basic_auth.clone();
+        let p2 = self.basic_auth.clone();
 
         async move {
             let (h, reg) = AbortHandle::new_pair();
             tokio::task::spawn_local(Abortable::new(
                 async move {
-                    let client = c1.read().await;
-                    let api = ManagementApi::new(&client);
                     loop {
                         let mut total_req = 0_usize;
                         let mut total_users = 0_usize;
                         let mut total_services = 0_usize;
 
-                        if let Ok(services) = api.get_services().await {
+                        if let Ok(services) = ManagementApi::new(&p1.read().await.client)
+                            .get_services()
+                            .await
+                        {
                             total_services = services.iter().len()
                         }
 
-                        for (s, u) in users.read().await.iter() {
-                            let us = api
+                        for (s, u) in p1.read().await.users.iter() {
+                            let us = ManagementApi::new(&p1.read().await.client)
                                 .get_user_stats(s.name.as_str(), u.username.as_str())
                                 .await;
                             if let Ok(us) = us {
@@ -118,7 +121,7 @@ impl Runtime for BasicAuthRuntime {
 
                         tokio::time::delay_for(INTERVAL).await;
 
-                        global_stats.write().await.replace(GlobalStats {
+                        p1.write().await.global_stats.replace(GlobalStats {
                             users: total_users,
                             services: total_services,
                             requests: UserStats {
@@ -136,12 +139,9 @@ impl Runtime for BasicAuthRuntime {
                 },
                 reg,
             ));
-            handle.write().await.replace(h);
+            p2.write().await.handle.replace(h);
 
-            let client = c2.read().await;
-            let api2 = ManagementApi::new(&client);
-
-            match ya_http_proxy(api2).await {
+            match ya_http_proxy(ManagementApi::new(&p2.read().await.client)).await {
                 Ok(()) => Ok(None),
                 Err(e) => Err(ya_runtime_sdk::error::Error::from(e)),
             }
@@ -150,11 +150,11 @@ impl Runtime for BasicAuthRuntime {
     }
 
     fn stop<'a>(&mut self, _ctx: &mut Context<Self>) -> EmptyResponse<'a> {
-        let handle = self.handle.clone();
+        let runtime = self.basic_auth.clone();
 
         async move {
             //raz jeszcze emitter
-            if let Some(handle) = handle.read().await.clone() {
+            if let Some(handle) = &runtime.read().await.handle {
                 handle.abort();
             }
 
@@ -188,10 +188,10 @@ impl Runtime for BasicAuthRuntime {
             }
             .boxed_local();
         };
-        let c = self.client.clone();
+        let runtime = self.basic_auth.clone();
+
         async move {
-            let client = c.read().await;
-            let api = ManagementApi::new(&client);
+            let api = ManagementApi::new(&runtime.read().await.client);
             match ya_http_proxy(api).await {
                 Ok(()) => Ok(()),
                 Err(e) => Err(ya_runtime_sdk::error::Error::from(e)),
