@@ -31,7 +31,7 @@ serde = { version = "^1.0", features = ["derive"] }
 serde_json = "1.0"
 structopt = "0.3"
 thiserror = "1.0"
-tokio = { version = "0.2", features = ["io-std", "io-util", "fs", "rt-core", "rt-threaded", "macros", "process", "time"] }
+tokio = { version = "0.2", features = ["io-std", "io-util", "fs", "rt-core", "rt-threaded", "process", "time"] }
 
 [workspace]
 members = [ "crates/*" ]
