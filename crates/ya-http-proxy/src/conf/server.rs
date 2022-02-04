@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_default::DefaultFromSerde;
 
 use crate::conf::common::CommonConf;
-use ya_http_proxy_client::deser;
+use ya_http_proxy_model::deser;
 
 /// Configuration for the HTTP proxy server
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, DefaultFromSerde)]

@@ -1,20 +1,43 @@
-use futures::FutureExt;
-use std::fs;
-use std::fs::File;
+mod lock;
+mod proxy;
+
+use std::collections::HashMap;
+use std::fs::{read_dir, File};
 use std::io::BufReader;
 use std::path::PathBuf;
-use structopt::StructOpt;
+use std::rc::Rc;
+use std::time::Duration;
 
-use ya_http_proxy_client::model::CreateService;
+use futures::future::{AbortHandle, Abortable};
+use futures::FutureExt;
+use structopt::StructOpt;
+use tokio::sync::RwLock;
+
+use ya_http_proxy_client::api::ManagementApi;
+use ya_http_proxy_client::web::WebClient;
+use ya_http_proxy_model::{CreateService, CreateUser, GlobalStats, UserStats};
 use ya_runtime_sdk::cli::parse_cli;
 use ya_runtime_sdk::env::Env;
 use ya_runtime_sdk::*;
 
 type RuntimeCli = <BasicAuthRuntime as RuntimeDef>::Cli;
 
+const COUNTER_NAME: &str = "golem.runtime.http-auth.requests.counter";
+const INTERVAL: Duration = Duration::from_secs(2);
+
 #[derive(Default, RuntimeDef)]
 #[cli(BasicAuthCli)]
-pub struct BasicAuthRuntime;
+pub struct BasicAuthRuntime {
+    basic_auth: Rc<RwLock<BasicAuth>>,
+}
+
+#[derive(Default)]
+pub struct BasicAuth {
+    client: WebClient,
+    handle: Option<AbortHandle>,
+    users: HashMap<CreateService, CreateUser>,
+    global_stats: Option<GlobalStats>,
+}
 
 #[derive(Default)]
 pub struct BasicAuthEnv {
@@ -55,12 +78,110 @@ impl Runtime for BasicAuthRuntime {
         }
     }
 
-    fn start<'a>(&mut self, _ctx: &mut Context<Self>) -> OutputResponse<'a> {
-        async move { Ok(None) }.boxed_local()
+    fn start<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
+        let mut emitter = match ctx.emitter.clone() {
+            Some(emitter) => emitter,
+            None => {
+                let err = anyhow::anyhow!("Not running in server mode");
+                return futures::future::err(err.into()).boxed_local();
+            }
+        };
+
+        let p1 = self.basic_auth.clone();
+        let p2 = self.basic_auth.clone();
+
+        async move {
+            let (h, reg) = AbortHandle::new_pair();
+            tokio::task::spawn_local(Abortable::new(
+                async move {
+                    loop {
+                        let mut total_req = 0_usize;
+                        let mut total_users = 0_usize;
+                        let mut total_services = 0_usize;
+
+                        if let Ok(services) = ManagementApi::new(&p1.read().await.client)
+                            .get_services()
+                            .await
+                        {
+                            total_services = services.iter().len()
+                        }
+
+                        for (s, u) in p1.read().await.users.iter() {
+                            let us = ManagementApi::new(&p1.read().await.client)
+                                .get_user_stats(s.name.as_str(), u.username.as_str())
+                                .await;
+                            if let Ok(us) = us {
+                                total_users += 1;
+                                total_req += us.requests
+                            }
+                        }
+
+                        tokio::time::delay_for(INTERVAL).await;
+
+                        p1.write().await.global_stats.replace(GlobalStats {
+                            users: total_users,
+                            services: total_services,
+                            requests: UserStats {
+                                requests: total_req,
+                            },
+                        });
+
+                        emitter
+                            .counter(RuntimeCounter {
+                                name: COUNTER_NAME.to_string(),
+                                value: total_req as f64,
+                            })
+                            .await;
+                    }
+                },
+                reg,
+            ));
+            p2.write().await.handle.replace(h);
+
+            match proxy::spawn(ManagementApi::new(&p2.read().await.client)).await {
+                Ok(()) => Ok(None),
+                Err(e) => Err(ya_runtime_sdk::error::Error::from(e)),
+            }
+        }
+        .boxed_local()
     }
 
-    fn stop<'a>(&mut self, _ctx: &mut Context<Self>) -> EmptyResponse<'a> {
-        async move { Ok(()) }.boxed_local()
+    fn stop<'a>(&mut self, ctx: &mut Context<Self>) -> EmptyResponse<'a> {
+        let mut emitter = match ctx.emitter.clone() {
+            Some(emitter) => emitter,
+            None => {
+                let err = anyhow::anyhow!("Not running in server mode");
+                return futures::future::err(err.into()).boxed_local();
+            }
+        };
+
+        let p = self.basic_auth.clone();
+
+        async move {
+            let mut total_req = 0_usize;
+
+            for (s, u) in p.read().await.users.iter() {
+                let us = ManagementApi::new(&p.read().await.client)
+                    .get_user_stats(s.name.as_str(), u.username.as_str())
+                    .await;
+                if let Ok(us) = us {
+                    total_req += us.requests
+                }
+            }
+            emitter
+                .counter(RuntimeCounter {
+                    name: COUNTER_NAME.to_string(),
+                    value: total_req as f64,
+                })
+                .await;
+
+            if let Some(handle) = &p.read().await.handle {
+                handle.abort();
+            }
+
+            Ok(())
+        }
+        .boxed_local()
     }
 
     fn run_command<'a>(
@@ -74,11 +195,36 @@ impl Runtime for BasicAuthRuntime {
             Ok(())
         })
     }
+
+    fn offer<'a>(&mut self, _ctx: &mut Context<Self>) -> OutputResponse<'a> {
+        todo!()
+    }
+
+    fn test<'a>(&mut self, ctx: &mut Context<Self>) -> EmptyResponse<'a> {
+        if config_lookup(ctx).is_none() {
+            return async move {
+                Err(ya_runtime_sdk::error::Error::from_string(
+                    "Config file not found".to_string(),
+                ))
+            }
+            .boxed_local();
+        };
+        let p = self.basic_auth.clone();
+
+        async move {
+            let api = ManagementApi::new(&p.read().await.client);
+            match proxy::spawn(api).await {
+                Ok(()) => Ok(()),
+                Err(e) => Err(ya_runtime_sdk::error::Error::from(e)),
+            }
+        }
+        .boxed_local()
+    }
 }
 
-#[tokio::main]
+#[actix_rt::main]
 async fn main() -> anyhow::Result<()> {
-    ya_runtime_sdk::run_with::<BasicAuthRuntime, _>(BasicAuthEnv::default()).await
+    ya_runtime_sdk::run_local_with::<BasicAuthRuntime, _>(BasicAuthEnv::default()).await
 }
 
 fn config_lookup(ctx: &mut Context<BasicAuthRuntime>) -> Option<CreateService> {
@@ -92,13 +238,7 @@ fn config_lookup(ctx: &mut Context<BasicAuthRuntime>) -> Option<CreateService> {
         paths.push(path)
     }
 
-    if !paths.is_empty() {
-        if let Ok(cs) = find_config(paths, ctx) {
-            return cs;
-        }
-    }
-
-    None
+    find_config(paths, ctx).ok().flatten()
 }
 
 fn find_config(
@@ -108,7 +248,7 @@ fn find_config(
     let mut dir_paths = vec![];
 
     for path in paths {
-        let dirs = fs::read_dir(path)?;
+        let dirs = read_dir(path)?;
         dir_paths.push(dirs.filter_map(|d| d.ok()).map(|d| d.path()).collect());
     }
 

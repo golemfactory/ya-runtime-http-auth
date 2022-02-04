@@ -22,7 +22,7 @@ required-features = [
 ]
 
 [dependencies]
-ya-http-proxy-client = { version = "0.1", path = "../ya-http-proxy-client"}
+ya-http-proxy-model = { version = "0.1", path = "../ya-http-proxy-model"}
 
 base64 = { version = "0.13" }
 chrono = { version = "0.4", features = ["serde"] }
