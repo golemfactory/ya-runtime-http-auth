@@ -7,7 +7,7 @@ use crate::{Error, Result};
 use ya_http_proxy_model::ErrorResponse;
 
 pub const MANAGEMENT_API_URL_ENV_VAR: &str = "MANAGEMENT_API_URL";
-pub const DEFAULT_MANAGEMENT_API_URL: &str = "http://127.0.0.1:1234";
+pub const DEFAULT_MANAGEMENT_API_URL: &str = "http://127.0.0.1:6668";
 const MAX_BODY_SIZE: usize = 8 * 1024 * 1024;
 
 #[derive(Clone)]

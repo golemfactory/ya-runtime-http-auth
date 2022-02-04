@@ -1,19 +1,18 @@
 mod lock;
+mod proxy;
 
-use futures::future::{AbortHandle, Abortable};
-use futures::FutureExt;
 use std::collections::HashMap;
-use std::fs;
-use std::fs::File;
+use std::fs::{read_dir, File};
 use std::io::BufReader;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use futures::future::{AbortHandle, Abortable};
+use futures::FutureExt;
 use structopt::StructOpt;
-use tokio::process::Command;
 use tokio::sync::RwLock;
 
-use crate::lock::{with_lock_ext, LockFile};
 use ya_http_proxy_client::api::ManagementApi;
 use ya_http_proxy_client::web::WebClient;
 use ya_http_proxy_model::{CreateService, CreateUser, GlobalStats, UserStats};
@@ -25,8 +24,6 @@ type RuntimeCli = <BasicAuthRuntime as RuntimeDef>::Cli;
 
 const COUNTER_NAME: &str = "golem.runtime.http-auth.requests.counter";
 const INTERVAL: Duration = Duration::from_secs(2);
-const TIMEOUT: Duration = Duration::from_secs(10);
-const SLEEP: Duration = Duration::from_millis(500);
 
 #[derive(Default, RuntimeDef)]
 #[cli(BasicAuthCli)]
@@ -141,7 +138,7 @@ impl Runtime for BasicAuthRuntime {
             ));
             p2.write().await.handle.replace(h);
 
-            match ya_http_proxy(ManagementApi::new(&p2.read().await.client)).await {
+            match proxy::spawn(ManagementApi::new(&p2.read().await.client)).await {
                 Ok(()) => Ok(None),
                 Err(e) => Err(ya_runtime_sdk::error::Error::from(e)),
             }
@@ -216,7 +213,7 @@ impl Runtime for BasicAuthRuntime {
 
         async move {
             let api = ManagementApi::new(&p.read().await.client);
-            match ya_http_proxy(api).await {
+            match proxy::spawn(api).await {
                 Ok(()) => Ok(()),
                 Err(e) => Err(ya_runtime_sdk::error::Error::from(e)),
             }
@@ -241,13 +238,7 @@ fn config_lookup(ctx: &mut Context<BasicAuthRuntime>) -> Option<CreateService> {
         paths.push(path)
     }
 
-    if !paths.is_empty() {
-        if let Ok(cs) = find_config(paths, ctx) {
-            return cs;
-        }
-    }
-
-    None
+    find_config(paths, ctx).ok().flatten()
 }
 
 fn find_config(
@@ -257,7 +248,7 @@ fn find_config(
     let mut dir_paths = vec![];
 
     for path in paths {
-        let dirs = fs::read_dir(path)?;
+        let dirs = read_dir(path)?;
         dir_paths.push(dirs.filter_map(|d| d.ok()).map(|d| d.path()).collect());
     }
 
@@ -285,44 +276,4 @@ fn read_config(path: PathBuf) -> anyhow::Result<CreateService> {
     let cs = serde_json::from_reader(reader)?;
 
     Ok(cs)
-}
-
-async fn ya_http_proxy(api: ManagementApi) -> anyhow::Result<()> {
-    let mut lock = LockFile::new(with_lock_ext(std::env::current_dir().unwrap_or_default()));
-    let timestamp = Instant::now();
-
-    loop {
-        match api.get_services().await {
-            Ok(_) => {
-                break;
-            }
-            Err(_) => {
-                if lock.is_locked() {
-                    if Instant::now() - timestamp >= TIMEOUT {
-                        anyhow::bail!("timeout")
-                    }
-                    tokio::time::delay_for(SLEEP).await;
-                    continue;
-                }
-
-                lock.lock()?;
-                let _child = Command::new("ya-http-proxy").kill_on_drop(false).spawn()?;
-                lock.unlock()?;
-
-                if let Err(_) = api.get_services().await {
-                    if Instant::now() - timestamp >= TIMEOUT {
-                        anyhow::bail!("timeout")
-                    }
-                    tokio::time::delay_for(SLEEP).await;
-                    if let Err(e) = api.get_services().await {
-                        anyhow::bail!(e.to_string())
-                    }
-                    break;
-                }
-                break;
-            }
-        }
-    }
-
-    Ok(())
 }

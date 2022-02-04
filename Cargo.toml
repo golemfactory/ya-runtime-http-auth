@@ -6,7 +6,8 @@ repository = "https://github.com/golemfactory/ya-runtime-basic-auth"
 edition = "2021"
 license = "GPL-3.0"
 
-[features]
+[target.'cfg(target_family = "unix")'.dependencies]
+nix = "0.23"
 
 [dependencies]
 #ya-runtime-sdk = { version = "0.2.0", features = ["macros"] }
@@ -16,20 +17,21 @@ ya-http-proxy-model = { version = "0.1", path = "crates/ya-http-proxy-model" }
 
 actix-rt = "1.0.0"
 anyhow = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
 custom_derive = "0.1.7"
+dirs = "4.0"
 enum_derive = "0.1.7"
 futures = "0.3"
+fs2 = "0.4"
+is_executable = "1.0"
 local_ipaddress = "0.1.3"
+log = "0.4"
 rand = "0.8"
 serde = { version = "^1.0", features = ["derive"] }
 serde_json = "1.0"
 structopt = "0.3"
-tokio = { version = "0.2", features = ["io-std", "io-util", "fs", "rt-core", "rt-threaded", "macros", "process", "time"] }
-dirs = "4.0"
-chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1.0"
-fs2 = "0.4"
-log = "0.4"
+tokio = { version = "0.2", features = ["io-std", "io-util", "fs", "rt-core", "rt-threaded", "macros", "process", "time"] }
 
 [workspace]
 members = [ "crates/*" ]
