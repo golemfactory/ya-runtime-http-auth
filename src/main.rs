@@ -246,9 +246,11 @@ impl Runtime for BasicAuthRuntime {
     }
 }
 
-#[actix_rt::main]
-async fn main() -> anyhow::Result<()> {
-    ya_runtime_sdk::run_local_with::<BasicAuthRuntime, _>(BasicAuthEnv::default()).await
+fn main() -> anyhow::Result<()> {
+    let mut system = actix_rt::System::new("runtime");
+    system.block_on(ya_runtime_sdk::run_with::<BasicAuthRuntime, _>(
+        BasicAuthEnv::default(),
+    ))
 }
 
 fn config_lookup(ctx: &mut Context<BasicAuthRuntime>) -> Option<CreateService> {

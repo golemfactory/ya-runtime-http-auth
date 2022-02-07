@@ -70,9 +70,7 @@ pub async fn spawn(api: ManagementApi) -> anyhow::Result<()> {
                 Err(err) => match err {
                     Error::SendRequestError { .. } => {
                         tokio::time::delay_for(SLEEP).await;
-                        lock.is_locked()
-                            .then(|| ProxyState::AwaitStart)
-                            .unwrap_or(ProxyState::Running)
+                        ProxyState::AwaitStart
                     }
                     err => anyhow::bail!(err),
                 },

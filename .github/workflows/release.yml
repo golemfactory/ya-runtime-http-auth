@@ -1,0 +1,208 @@
+name: Release
+on:
+  push:
+    tags:
+      - v*
+      - pre-rel-*
+
+jobs:
+  create-release:
+    name: "Create Release"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Release
+        uses: actions/github-script@v3.0
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            let tag = context.payload.ref.replace(/.*\//, '');
+            let buildNo = context.runNumber;
+            let versionName = tag.replace(/^pre-rel-/,'');
+            try {
+              let release =  await github.request("GET /repos/:owner/:repo/releases/tags/:tag", {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: tag
+              });
+            }
+            catch(e) {
+              let body = ["TODO"].join("\n");
+
+              let release =  await github.request("POST /repos/:owner/:repo/releases", {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                data: {
+                  tag_name: tag,
+                  prerelease: true,
+                  body: body,
+                  name: `${versionName} #${buildNo}`
+                }
+              });
+              console.log(release.data.upload_url);
+            }
+
+  build:
+    name: Build Release
+    needs:
+      - create-release
+    runs-on: ubuntu-latest
+    env:
+      OPENSSL_STATIC: 1
+    steps:
+      - uses: actions/checkout@v1
+        with:
+          lfs: true
+
+      - name: Install Musl
+        run: |
+          sudo apt-get install -y musl-tools musl
+
+      - name: Get upload url
+        id: release_upload_url
+        uses: actions/github-script@0.9.0
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          result-encoding: string
+          script: |
+              let tag = context.payload.ref.replace(/.*\//, '');
+              let release =  await github.request("GET /repos/:owner/:repo/releases/tags/:tag", {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: tag
+              });
+              console.log(release.data.upload_url);
+              return release.data.upload_url
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-unknown-linux-musl
+          override: true
+
+      - name: Build proxy
+        run: |
+          cargo build -p ya-http-proxy --features bin --release --target x86_64-unknown-linux-musl
+      - name: Build runtime
+        run: |
+          cargo build --release --target x86_64-unknown-linux-musl
+
+      - name: Pack
+        id: pack
+        shell: bash
+        env:
+          GITHUB_REF: ${{ github.ref }}
+          OS_NAME: linux
+        run: |
+          TAG_NAME="${GITHUB_REF##*/}"
+          TARGET_DIR=releases/ya-runtime-basic-auth-linux-${TAG_NAME}
+
+          mkdir -p "$TARGET_DIR/ya-runtime-basic-auth"
+          strip "target/x86_64-unknown-linux-musl/release/ya-runtime-basic-auth"
+          strip "target/x86_64-unknown-linux-musl/release/ya-http-proxy"
+
+          set -x
+          cp target/x86_64-unknown-linux-musl/release/ya-runtime-basic-auth "$TARGET_DIR/ya-runtime-basic-auth/"
+          cp target/x86_64-unknown-linux-musl/release/ya-http-proxy "$TARGET_DIR/ya-runtime-basic-auth/"
+          cp conf/ya-runtime-basic-auth.json "$TARGET_DIR/"
+          (cd releases && tar czvf "ya-runtime-basic-auth-${OS_NAME}-${TAG_NAME}.tar.gz" "ya-runtime-basic-auth-${OS_NAME}-${TAG_NAME}")
+
+          echo "::set-output name=artifact::ya-runtime-basic-auth-${OS_NAME}-${TAG_NAME}.tar.gz"
+          echo "::set-output name=media::application/tar+gzip"
+
+      - name: Upload
+        run: echo todo upload ${{ steps.pack.outputs.artifact }}
+
+      - name: Upload Release Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.release_upload_url.outputs.result }}
+          asset_path: ./releases/${{ steps.pack.outputs.artifact }}
+          asset_name: ${{ steps.pack.outputs.artifact }}
+          asset_content_type: ${{ steps.pack.outputs.media }}
+  build-deb:
+    name: Build Deb
+    needs:
+      - create-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v2
+        with:
+          lfs: true
+
+      - name: Get upload url
+        id: release_upload_url
+        uses: actions/github-script@0.9.0
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          result-encoding: string
+          script: |
+            let tag = context.payload.ref.replace(/.*\//, '');
+            let release =  await github.request("GET /repos/:owner/:repo/releases/tags/:tag", {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag: tag
+            });
+            console.log(release.data.upload_url);
+            return release.data.upload_url
+
+      - name: Extract Version
+        id: version
+        shell: bash
+        env:
+          GITHUB_REF: ${{ github.ref }}
+        run: |
+          TAG_NAME="${GITHUB_REF##*/}"
+          TAGV_NAME="${TAG_NAME#pre-rel-}"
+          VERSION=${TAGV_NAME#v}
+          echo "::set-output name=tagv::${TAG_NAME}"
+          echo "::set-output name=version::${VERSION}"
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-unknown-linux-musl
+          override: true
+
+      - name: Install dependencies
+        run: sudo apt-get install -y musl-tools musl dpkg liblzma-dev
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb
+
+      - name: Build proxy
+        run: |
+          cargo build -p ya-http-proxy --features bin --release --target x86_64-unknown-linux-musl
+
+      - name: Build deb
+        id: deb
+        shell: bash
+        env:
+          GITHUB_REF: ${{ github.ref }}
+          OS_NAME: linux
+        run: |
+          TAG_NAME="${GITHUB_REF##*/}"
+          TAGV_NAME="${TAG_NAME#pre-rel-}"
+          VERSION=${TAGV_NAME#v}
+
+          set -euo pipefail
+
+          OUTPUT=$(cargo deb --target x86_64-unknown-linux-musl --deb-version ${VERSION} | tail -n1)
+          NAME=$(basename "${OUTPUT}")
+
+          echo "::set-output name=path::${OUTPUT}"
+          echo "::set-output name=name::${NAME}"
+
+      - name: Upload Release Deb
+        id: upload-release-asset-core
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.release_upload_url.outputs.result }}
+          asset_path: ${{ steps.deb.outputs.path }}
+          asset_name: ${{ steps.deb.outputs.name }}
+          asset_content_type: application/vnd.debian.binary-package
