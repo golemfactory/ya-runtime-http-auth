@@ -1,0 +1,9 @@
+[
+  {
+    "name": "http-auth",
+    "version": "0.1.0",
+    "supervisor-path": "exe-unit",
+    "runtime-path": "ya-runtime-basic-auth/ya-runtime-basic-auth",
+    "description": "HTTP auth runtime"
+  }
+]
