@@ -1,5 +1,7 @@
 use crate::{web::WebClient, Result};
-use ya_http_proxy_model::{CreateService, CreateUser, Service, User, UserEndpointStats, UserStats};
+use ya_http_proxy_model::{
+    CreateService, CreateUser, GlobalStats, Service, User, UserEndpointStats, UserStats,
+};
 
 #[derive(Clone)]
 pub struct ManagementApi {
@@ -7,8 +9,7 @@ pub struct ManagementApi {
 }
 
 impl ManagementApi {
-    pub fn new(client: &WebClient) -> Self {
-        let client = client.clone();
+    pub fn new(client: WebClient) -> Self {
         Self { client }
     }
 
@@ -71,5 +72,11 @@ impl ManagementApi {
             service_name, user_name
         );
         self.client.get(&url).await
+    }
+
+    // Global statistics
+
+    pub async fn get_global_stats(&self) -> Result<GlobalStats> {
+        self.client.get("stats").await
     }
 }

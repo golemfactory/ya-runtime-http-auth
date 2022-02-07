@@ -111,7 +111,7 @@ pub struct User {
 }
 
 /// Aggregated user statistics
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Default, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserStats {
     pub requests: usize,
@@ -140,7 +140,8 @@ pub struct ErrorResponse {
 }
 
 /// Global statistics
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+/// FIXME: introduce per-runtime instead of global statistics
+#[derive(Clone, Default, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalStats {
     pub users: usize,
