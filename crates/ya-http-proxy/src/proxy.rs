@@ -123,7 +123,7 @@ impl ProxyManager {
         match create.cert {
             Some(ref cert) => {
                 conf.server.server_cert.server_cert_store_path = Some(cert.path.clone());
-                conf.server.server_cert.server_cert_store_path = Some(cert.path.clone());
+                conf.server.server_cert.server_key_path = Some(cert.key_path.clone());
             }
             None => {
                 let path = match conf.server.server_cert.server_cert_store_path {
