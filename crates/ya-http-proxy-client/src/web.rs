@@ -63,21 +63,26 @@ impl WebClient {
         .await
         .map_err(|e| Error::from_request(e, method.clone(), url.clone()))?;
 
-        if !res.status().is_success() {
-            let e = ErrorResponse {
-                message: res.status().to_string(),
-            };
-            return Ok(serde_json::from_value(serde_json::json!(e))?);
-        }
-
         let raw_body = res.body().limit(MAX_BODY_SIZE).await?;
         let body = std::str::from_utf8(&raw_body)?;
+
         log::debug!(
             "WebRequest: method={} url={}, resp='{}'",
             method,
             url,
             body.split_at(512.min(body.len())).0,
         );
-        Ok(serde_json::from_str(body)?)
+
+        if res.status().is_success() {
+            return Ok(serde_json::from_str(body)?);
+        }
+
+        let response: ErrorResponse = serde_json::from_str(body)?;
+        Err(Error::SendRequestError {
+            code: res.status(),
+            url,
+            method,
+            msg: response.message,
+        })
     }
 }
