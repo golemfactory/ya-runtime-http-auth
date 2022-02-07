@@ -9,41 +9,83 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use futures::future::{AbortHandle, Abortable};
-use futures::FutureExt;
+use futures::{FutureExt, StreamExt};
+use http::StatusCode;
+use serde::{Deserialize, Serialize};
+use serde_default::DefaultFromSerde;
 use structopt::StructOpt;
 use tokio::sync::RwLock;
 
-use http::StatusCode;
 use ya_http_proxy_client::api::ManagementApi;
-use ya_http_proxy_client::web::WebClient;
+use ya_http_proxy_client::web::{WebClient, DEFAULT_MANAGEMENT_API_URL};
 use ya_http_proxy_client::Error;
-use ya_http_proxy_model::{CreateService, CreateUser, GlobalStats, UserStats};
+use ya_http_proxy_model::{CreateService, CreateUser, GlobalStats};
 use ya_runtime_sdk::cli::parse_cli;
 use ya_runtime_sdk::env::Env;
 use ya_runtime_sdk::*;
 
 type RuntimeCli = <BasicAuthRuntime as RuntimeDef>::Cli;
 
+const MANAGEMENT_API_URL_ENV_VAR: &str = "MANAGEMENT_API_URL";
 const COUNTER_NAME: &str = "golem.runtime.http-auth.requests.counter";
-const INTERVAL: Duration = Duration::from_secs(2);
+const COUNTER_PUBLISH_INTERVAL: Duration = Duration::from_secs(2);
+const API_MAX_CONCURRENT_REQUESTS: usize = 3;
 
-#[derive(Default, RuntimeDef)]
+#[derive(RuntimeDef)]
 #[cli(BasicAuthCli)]
+#[conf(BasicAuthConf)]
 pub struct BasicAuthRuntime {
     basic_auth: Rc<RwLock<BasicAuth>>,
 }
 
-#[derive(Default)]
+impl From<BasicAuth> for BasicAuthRuntime {
+    fn from(basic_auth: BasicAuth) -> Self {
+        Self {
+            basic_auth: Rc::new(RwLock::new(basic_auth)),
+        }
+    }
+}
+
 pub struct BasicAuth {
-    client: WebClient,
+    api: ManagementApi,
     handle: Option<AbortHandle>,
     users: HashMap<CreateService, CreateUser>,
-    global_stats: Option<GlobalStats>,
+    global_stats: GlobalStats,
+}
+
+impl BasicAuth {
+    pub async fn count_requests(&self) -> usize {
+        futures::stream::iter(self.users.iter())
+            .map(|(s, u)| {
+                self.api
+                    .get_user_stats(s.name.as_str(), u.username.as_str())
+            })
+            .buffer_unordered(API_MAX_CONCURRENT_REQUESTS)
+            .filter_map(|r| async move { r.ok() })
+            .fold(0, |mut acc, stats| async move {
+                acc += stats.requests;
+                acc
+            })
+            .await
+    }
+
+    pub async fn delete_users(&self) {
+        let failed = futures::stream::iter(self.users.iter())
+            .map(|(s, u)| self.api.delete_user(s.name.as_str(), u.username.as_str()))
+            .buffer_unordered(API_MAX_CONCURRENT_REQUESTS)
+            .filter_map(|r| async move { r.err() })
+            .count()
+            .await;
+
+        if failed > 0 {
+            log::error!("Failed to remove {} users", failed);
+        }
+    }
 }
 
 #[derive(Default)]
 pub struct BasicAuthEnv {
-    runtime_name: Option<String>,
+    service_name: Option<String>,
 }
 
 #[derive(StructOpt)]
@@ -52,32 +94,35 @@ pub struct BasicAuthCli {
     name: String,
 }
 
-impl Env<RuntimeCli> for BasicAuthEnv {
-    fn runtime_name(&self) -> Option<String> {
-        self.runtime_name.clone()
-    }
+#[derive(Deserialize, Serialize, DefaultFromSerde)]
+#[serde(rename_all = "camelCase")]
+pub struct BasicAuthConf {
+    #[serde(default = "default_management_api_url")]
+    pub management_api_url: String,
+}
 
+fn default_management_api_url() -> String {
+    std::env::var(MANAGEMENT_API_URL_ENV_VAR)
+        .unwrap_or_else(|_| DEFAULT_MANAGEMENT_API_URL.to_string())
+}
+
+impl Env<RuntimeCli> for BasicAuthEnv {
     fn cli(&mut self, project_name: &str, project_version: &str) -> anyhow::Result<RuntimeCli> {
         let cli: RuntimeCli = parse_cli(project_name, project_version, self.args())?;
-
-        // set runtime name from a positional argument
-        self.runtime_name = Some(cli.runtime.name.clone());
-
+        self.service_name = Some(cli.runtime.name.clone());
         Ok(cli)
     }
 }
 
 impl Runtime for BasicAuthRuntime {
     fn deploy<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
-        match config_lookup(ctx) {
-            Some(_cs) => async move { Ok(None) }.boxed_local(),
-            None => async move {
-                Err(ya_runtime_sdk::error::Error::from_string(
-                    "Config file not found".to_string(),
-                ))
-            }
-            .boxed_local(),
-        }
+        let result = match config_lookup(ctx) {
+            Some(_) => Ok(None),
+            None => Err(ya_runtime_sdk::error::Error::from_string(
+                "Config file not found".to_string(),
+            )),
+        };
+        async move { result }.boxed_local()
     }
 
     fn start<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
@@ -88,7 +133,6 @@ impl Runtime for BasicAuthRuntime {
                 return futures::future::err(err.into()).boxed_local();
             }
         };
-
         let service = match config_lookup(ctx) {
             Some(service) => service,
             None => {
@@ -97,63 +141,41 @@ impl Runtime for BasicAuthRuntime {
             }
         };
 
-        let p1 = self.basic_auth.clone();
-        let p2 = self.basic_auth.clone();
-
+        let basic_auth = self.basic_auth.clone();
         async move {
+            let api = {
+                let inner = basic_auth.read().await;
+                inner.api.clone()
+            };
+
+            proxy::spawn(api.clone()).await?;
+            try_create_service(api.clone(), service.clone()).await?;
+
             let (h, reg) = AbortHandle::new_pair();
-            let api = ManagementApi::new(&p1.read().await.client);
+            basic_auth.write().await.handle.replace(h);
+
             tokio::task::spawn_local(Abortable::new(
                 async move {
                     loop {
-                        let mut total_req = 0_usize;
-                        let mut total_users = 0_usize;
-                        let mut total_services = 0_usize;
+                        let total_req = {
+                            let inner = basic_auth.read().await;
+                            inner.count_requests().await
+                        };
 
-                        if let Ok(services) = api.get_services().await {
-                            total_services = services.iter().len()
+                        if let Ok(stats) = api.get_global_stats().await {
+                            basic_auth.write().await.global_stats = stats;
                         }
-
-                        for (s, u) in p1.read().await.users.iter() {
-                            let us = api
-                                .get_user_stats(s.name.as_str(), u.username.as_str())
-                                .await;
-                            if let Ok(us) = us {
-                                total_users += 1;
-                                total_req += us.requests
-                            }
-                        }
-
-                        tokio::time::delay_for(INTERVAL).await;
-
-                        p1.write().await.global_stats.replace(GlobalStats {
-                            users: total_users,
-                            services: total_services,
-                            requests: UserStats {
-                                requests: total_req,
-                            },
-                        });
 
                         emit_counter(COUNTER_NAME.to_string(), emitter.clone(), total_req as f64)
                             .await;
+
+                        tokio::time::delay_for(COUNTER_PUBLISH_INTERVAL).await;
                     }
                 },
                 reg,
             ));
-            p2.write().await.handle.replace(h);
 
-            let api = ManagementApi::new(&p2.read().await.client);
-
-            match proxy::spawn(api).await {
-                Ok(()) => {
-                    let api = ManagementApi::new(&p2.read().await.client);
-                    match try_create_service(api, service).await {
-                        Ok(()) => Ok(None),
-                        Err(err) => Err(ya_runtime_sdk::error::Error::from(err)),
-                    }
-                }
-                Err(err) => Err(ya_runtime_sdk::error::Error::from(err)),
-            }
+            Ok(None)
         }
         .boxed_local()
     }
@@ -167,28 +189,18 @@ impl Runtime for BasicAuthRuntime {
             }
         };
 
-        let p = self.basic_auth.clone();
-
+        let inner = self.basic_auth.clone();
         async move {
-            let mut total_req = 0_usize;
-            let api = ManagementApi::new(&p.read().await.client);
+            let inner = inner.read().await;
+            if let Some(handle) = &inner.handle {
+                handle.abort();
+            };
 
-            for (s, u) in p.read().await.users.iter() {
-                let service_name = s.name.as_str();
-                let username = u.username.as_str();
-                let us = api.get_user_stats(service_name, username).await;
-                if let Ok(us) = us {
-                    total_req += us.requests;
-                    api.delete_user(service_name, username).await.ok();
-                }
-            }
+            let total_req = inner.count_requests().await;
+            inner.delete_users().await;
+            drop(inner);
 
             emit_counter(COUNTER_NAME.to_string(), emitter.clone(), total_req as f64).await;
-
-            if let Some(handle) = &p.read().await.handle {
-                handle.abort();
-            }
-
             Ok(())
         }
         .boxed_local()
@@ -233,10 +245,12 @@ impl Runtime for BasicAuthRuntime {
             }
             .boxed_local();
         };
-        let p = self.basic_auth.clone();
 
+        let inner = self.basic_auth.clone();
         async move {
-            let api = ManagementApi::new(&p.read().await.client);
+            let inner = inner.read().await;
+            let api = inner.api.clone();
+
             match proxy::spawn(api).await {
                 Ok(()) => Ok(()),
                 Err(e) => Err(ya_runtime_sdk::error::Error::from(e)),
@@ -247,10 +261,25 @@ impl Runtime for BasicAuthRuntime {
 }
 
 fn main() -> anyhow::Result<()> {
+    let runtime =
+        ya_runtime_sdk::build::<BasicAuthRuntime, _, _, _>(BasicAuthEnv::default(), move |ctx| {
+            let api_url = ctx.conf.management_api_url.clone();
+
+            async move {
+                let client = WebClient::new(api_url)?;
+                let api = ManagementApi::new(client);
+
+                Ok(BasicAuthRuntime::from(BasicAuth {
+                    api,
+                    handle: None,
+                    users: Default::default(),
+                    global_stats: Default::default(),
+                }))
+            }
+        });
+
     let mut system = actix_rt::System::new("runtime");
-    system.block_on(ya_runtime_sdk::run_with::<BasicAuthRuntime, _>(
-        BasicAuthEnv::default(),
-    ))
+    system.block_on(runtime)
 }
 
 fn config_lookup(ctx: &mut Context<BasicAuthRuntime>) -> Option<CreateService> {
