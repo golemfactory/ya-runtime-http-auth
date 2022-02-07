@@ -3177,6 +3177,7 @@ dependencies = [
  "enum_derive",
  "fs2",
  "futures",
+ "http",
  "is_executable",
  "local_ipaddress",
  "log",

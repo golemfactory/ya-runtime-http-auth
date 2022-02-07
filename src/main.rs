@@ -13,8 +13,10 @@ use futures::FutureExt;
 use structopt::StructOpt;
 use tokio::sync::RwLock;
 
+use http::StatusCode;
 use ya_http_proxy_client::api::ManagementApi;
 use ya_http_proxy_client::web::WebClient;
+use ya_http_proxy_client::Error;
 use ya_http_proxy_model::{CreateService, CreateUser, GlobalStats, UserStats};
 use ya_runtime_sdk::cli::parse_cli;
 use ya_runtime_sdk::env::Env;
@@ -79,10 +81,18 @@ impl Runtime for BasicAuthRuntime {
     }
 
     fn start<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
-        let mut emitter = match ctx.emitter.clone() {
+        let emitter = match ctx.emitter.clone() {
             Some(emitter) => emitter,
             None => {
                 let err = anyhow::anyhow!("Not running in server mode");
+                return futures::future::err(err.into()).boxed_local();
+            }
+        };
+
+        let service = match config_lookup(ctx) {
+            Some(service) => service,
+            None => {
+                let err = anyhow::anyhow!("Config file not found");
                 return futures::future::err(err.into()).boxed_local();
             }
         };
@@ -92,6 +102,7 @@ impl Runtime for BasicAuthRuntime {
 
         async move {
             let (h, reg) = AbortHandle::new_pair();
+            let api = ManagementApi::new(&p1.read().await.client);
             tokio::task::spawn_local(Abortable::new(
                 async move {
                     loop {
@@ -99,15 +110,12 @@ impl Runtime for BasicAuthRuntime {
                         let mut total_users = 0_usize;
                         let mut total_services = 0_usize;
 
-                        if let Ok(services) = ManagementApi::new(&p1.read().await.client)
-                            .get_services()
-                            .await
-                        {
+                        if let Ok(services) = api.get_services().await {
                             total_services = services.iter().len()
                         }
 
                         for (s, u) in p1.read().await.users.iter() {
-                            let us = ManagementApi::new(&p1.read().await.client)
+                            let us = api
                                 .get_user_stats(s.name.as_str(), u.username.as_str())
                                 .await;
                             if let Ok(us) = us {
@@ -126,11 +134,7 @@ impl Runtime for BasicAuthRuntime {
                             },
                         });
 
-                        emitter
-                            .counter(RuntimeCounter {
-                                name: COUNTER_NAME.to_string(),
-                                value: total_req as f64,
-                            })
+                        emit_counter(COUNTER_NAME.to_string(), emitter.clone(), total_req as f64)
                             .await;
                     }
                 },
@@ -138,16 +142,24 @@ impl Runtime for BasicAuthRuntime {
             ));
             p2.write().await.handle.replace(h);
 
-            match proxy::spawn(ManagementApi::new(&p2.read().await.client)).await {
-                Ok(()) => Ok(None),
-                Err(e) => Err(ya_runtime_sdk::error::Error::from(e)),
+            let api = ManagementApi::new(&p2.read().await.client);
+
+            match proxy::spawn(api).await {
+                Ok(()) => {
+                    let api = ManagementApi::new(&p2.read().await.client);
+                    match try_create_service(api, service).await {
+                        Ok(()) => Ok(None),
+                        Err(err) => Err(ya_runtime_sdk::error::Error::from(err)),
+                    }
+                }
+                Err(err) => Err(ya_runtime_sdk::error::Error::from(err)),
             }
         }
         .boxed_local()
     }
 
     fn stop<'a>(&mut self, ctx: &mut Context<Self>) -> EmptyResponse<'a> {
-        let mut emitter = match ctx.emitter.clone() {
+        let emitter = match ctx.emitter.clone() {
             Some(emitter) => emitter,
             None => {
                 let err = anyhow::anyhow!("Not running in server mode");
@@ -159,21 +171,19 @@ impl Runtime for BasicAuthRuntime {
 
         async move {
             let mut total_req = 0_usize;
+            let api = ManagementApi::new(&p.read().await.client);
 
             for (s, u) in p.read().await.users.iter() {
-                let us = ManagementApi::new(&p.read().await.client)
-                    .get_user_stats(s.name.as_str(), u.username.as_str())
-                    .await;
+                let service_name = s.name.as_str();
+                let username = u.username.as_str();
+                let us = api.get_user_stats(service_name, username).await;
                 if let Ok(us) = us {
-                    total_req += us.requests
+                    total_req += us.requests;
+                    api.delete_user(service_name, username).await.ok();
                 }
             }
-            emitter
-                .counter(RuntimeCounter {
-                    name: COUNTER_NAME.to_string(),
-                    value: total_req as f64,
-                })
-                .await;
+
+            emit_counter(COUNTER_NAME.to_string(), emitter.clone(), total_req as f64).await;
 
             if let Some(handle) = &p.read().await.handle {
                 handle.abort();
@@ -196,8 +206,22 @@ impl Runtime for BasicAuthRuntime {
         })
     }
 
-    fn offer<'a>(&mut self, _ctx: &mut Context<Self>) -> OutputResponse<'a> {
-        todo!()
+    fn offer<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
+        let service = match config_lookup(ctx) {
+            Some(service) => service,
+            None => {
+                let err = anyhow::anyhow!("Config file not found");
+                return futures::future::err(err.into()).boxed_local();
+            }
+        };
+
+        async move {
+            Ok(Some(crate::serialize::json::json!({
+            "golem.runtime.http-auth.meta": "",
+            "golem.runtime.http-auth.service.cpu-threads": service.cpu_threads
+            })))
+        }
+        .boxed_local()
     }
 
     fn test<'a>(&mut self, ctx: &mut Context<Self>) -> EmptyResponse<'a> {
@@ -278,4 +302,31 @@ fn read_config(path: PathBuf) -> anyhow::Result<CreateService> {
     let cs = serde_json::from_reader(reader)?;
 
     Ok(cs)
+}
+
+async fn emit_counter(counter_name: String, mut emitter: EventEmitter, value: f64) {
+    emitter
+        .counter(RuntimeCounter {
+            name: counter_name,
+            value,
+        })
+        .await;
+}
+
+async fn try_create_service(api: ManagementApi, service: CreateService) -> anyhow::Result<()> {
+    if let Err(err) = api.create_service(&service).await {
+        match err {
+            Error::SendRequestError {
+                code: StatusCode::CONFLICT,
+                ..
+            } => {
+                let s = api.get_service(service.name.as_str()).await?;
+                if s.inner != service {
+                    anyhow::bail!(err);
+                }
+            }
+            err => anyhow::bail!(err),
+        }
+    }
+    Ok(())
 }
