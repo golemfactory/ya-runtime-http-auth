@@ -2,13 +2,15 @@ use futures::{stream, StreamExt};
 use hyper::{Body, Request, Response, StatusCode};
 use routerify::prelude::RequestExt;
 
-use crate::api::{ApiErrorKind, RouteError};
+use crate::api::ApiErrorKind;
 use crate::proxy::ProxyManager;
 use crate::UserError;
 use ya_http_proxy_model as model;
 
+type HandlerResult = Result<Response<Body>, ApiErrorKind>;
+
 /// Lists services
-pub async fn get_services(req: Request<Body>) -> Result<Response<Body>, RouteError> {
+pub async fn get_services(req: Request<Body>) -> HandlerResult {
     let manager: &ProxyManager = req.data().unwrap();
     let proxies = manager.proxies();
 
@@ -25,7 +27,7 @@ pub async fn get_services(req: Request<Body>) -> Result<Response<Body>, RouteErr
 }
 
 /// Creates a new service
-pub async fn post_services(req: Request<Body>) -> Result<Response<Body>, RouteError> {
+pub async fn post_services(req: Request<Body>) -> HandlerResult {
     let (parts, body) = req.into_parts();
     let manager: &ProxyManager = parts.data().unwrap();
     let body = hyper::body::to_bytes(body).await?;
@@ -38,7 +40,7 @@ pub async fn post_services(req: Request<Body>) -> Result<Response<Body>, RouteEr
 }
 
 /// Retrieves a single service
-pub async fn get_service(req: Request<Body>) -> Result<Response<Body>, RouteError> {
+pub async fn get_service(req: Request<Body>) -> HandlerResult {
     let service_name = req.param("service").unwrap();
     let manager: &ProxyManager = req.data().unwrap();
 
@@ -49,7 +51,7 @@ pub async fn get_service(req: Request<Body>) -> Result<Response<Body>, RouteErro
 }
 
 /// Removes a service
-pub async fn delete_service(req: Request<Body>) -> Result<Response<Body>, RouteError> {
+pub async fn delete_service(req: Request<Body>) -> HandlerResult {
     let service_name = req.param("service").unwrap();
     let manager: &ProxyManager = req.data().unwrap();
 
@@ -60,7 +62,7 @@ pub async fn delete_service(req: Request<Body>) -> Result<Response<Body>, RouteE
 }
 
 /// Lists service users
-pub async fn get_users(req: Request<Body>) -> Result<Response<Body>, RouteError> {
+pub async fn get_users(req: Request<Body>) -> HandlerResult {
     let service_name = req.param("service").unwrap();
     let manager: &ProxyManager = req.data().unwrap();
 
@@ -79,7 +81,7 @@ pub async fn get_users(req: Request<Body>) -> Result<Response<Body>, RouteError>
 }
 
 /// Creates a new service user
-pub async fn post_users(req: Request<Body>) -> Result<Response<Body>, RouteError> {
+pub async fn post_users(req: Request<Body>) -> HandlerResult {
     let (parts, body) = req.into_parts();
     let manager: &ProxyManager = parts.data().unwrap();
     let body = hyper::body::to_bytes(body).await?;
@@ -99,7 +101,7 @@ pub async fn post_users(req: Request<Body>) -> Result<Response<Body>, RouteError
 }
 
 /// Retrieves a single service user
-pub async fn get_user(req: Request<Body>) -> Result<Response<Body>, RouteError> {
+pub async fn get_user(req: Request<Body>) -> HandlerResult {
     let service_name = req.param("service").unwrap();
     let username = req.param("user").unwrap();
     let manager: &ProxyManager = req.data().unwrap();
@@ -114,7 +116,7 @@ pub async fn get_user(req: Request<Body>) -> Result<Response<Body>, RouteError> 
 }
 
 /// Removes a service user
-pub async fn delete_user(req: Request<Body>) -> Result<Response<Body>, RouteError> {
+pub async fn delete_user(req: Request<Body>) -> HandlerResult {
     let service_name = req.param("service").unwrap();
     let username = req.param("user").unwrap();
     let manager: &ProxyManager = req.data().unwrap();
@@ -126,7 +128,7 @@ pub async fn delete_user(req: Request<Body>) -> Result<Response<Body>, RouteErro
 }
 
 /// Retrieves service user stats
-pub async fn get_user_stats(req: Request<Body>) -> Result<Response<Body>, RouteError> {
+pub async fn get_user_stats(req: Request<Body>) -> HandlerResult {
     let service_name = req.param("service").unwrap();
     let username = req.param("user").unwrap();
     let manager: &ProxyManager = req.data().unwrap();
@@ -142,7 +144,7 @@ pub async fn get_user_stats(req: Request<Body>) -> Result<Response<Body>, RouteE
 }
 
 /// Retrieves service user stats per endpoint called
-pub async fn get_user_endpoint_stats(req: Request<Body>) -> Result<Response<Body>, RouteError> {
+pub async fn get_user_endpoint_stats(req: Request<Body>) -> HandlerResult {
     let service_name = req.param("service").unwrap();
     let username = req.param("user").unwrap();
     let manager: &ProxyManager = req.data().unwrap();

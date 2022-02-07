@@ -16,7 +16,8 @@ use ya_http_proxy_model as model;
 
 mod handler;
 
-pub type ApiServer = Server<AddrIncoming, RouterService<Body, RouteError>>;
+pub type HandlerError = ApiErrorKind;
+pub type ApiServer = Server<AddrIncoming, RouterService<Body, HandlerError>>;
 
 pub struct Management {
     server: Option<ApiServer>,
@@ -66,7 +67,7 @@ impl Future for Management {
     }
 }
 
-fn router(manager: ProxyManager) -> routerify::Result<Router<Body, RouteError>> {
+fn router(manager: ProxyManager) -> routerify::Result<Router<Body, HandlerError>> {
     use handler::*;
 
     let mut builder = Router::builder()
@@ -91,7 +92,7 @@ fn router(manager: ProxyManager) -> routerify::Result<Router<Body, RouteError>> 
     builder.err_handler(err_handler).build()
 }
 
-async fn middleware_logger(req: Request<Body>) -> Result<Request<Body>, RouteError> {
+async fn middleware_logger(req: Request<Body>) -> Result<Request<Body>, HandlerError> {
     log::debug!(
         "{} {} {}",
         req.remote_addr(),
@@ -129,7 +130,7 @@ fn err_response(builder: Builder, code: StatusCode, msg: impl ToString) -> Respo
 }
 
 #[derive(thiserror::Error, Debug)]
-enum ApiErrorKind {
+pub enum ApiErrorKind {
     #[error("Bad request: {}", .0.to_string())]
     BadRequest(Error),
     #[error("Conflict: {}", .0.to_string())]
@@ -152,9 +153,21 @@ where
     }
 }
 
+impl From<hyper::Error> for ApiErrorKind {
+    fn from(e: hyper::Error) -> Self {
+        Self::InternalServerError(e.to_string())
+    }
+}
+
 impl From<hyper::http::Error> for ApiErrorKind {
     fn from(e: hyper::http::Error) -> Self {
         Self::InternalServerError(e.to_string())
+    }
+}
+
+impl From<serde_json::Error> for ApiErrorKind {
+    fn from(e: serde_json::Error) -> Self {
+        Self::BadRequest(Error::other(e))
     }
 }
 
