@@ -44,31 +44,31 @@ impl ManagementApi {
         self.client.post(&url, cu).await
     }
 
-    pub async fn get_user(&self, service_name: &str, user_name: &str) -> Result<User> {
-        let url = format!("services/{}/users/{}", service_name, user_name);
+    pub async fn get_user(&self, service_name: &str, username: &str) -> Result<User> {
+        let url = format!("services/{}/users/{}", service_name, username);
         self.client.get(&url).await
     }
 
-    pub async fn delete_user(&self, service_name: &str, user_name: &str) -> Result<()> {
-        let url = format!("services/{}/users/{}", service_name, user_name);
+    pub async fn delete_user(&self, service_name: &str, username: &str) -> Result<()> {
+        let url = format!("services/{}/users/{}", service_name, username);
         self.client.delete(&url).await
     }
 
     // User statistics
 
-    pub async fn get_user_stats(&self, service_name: &str, user_name: &str) -> Result<UserStats> {
-        let url = format!("services/{}/users/{}/stats", service_name, user_name);
+    pub async fn get_user_stats(&self, service_name: &str, username: &str) -> Result<UserStats> {
+        let url = format!("services/{}/users/{}/stats", service_name, username);
         self.client.get(&url).await
     }
 
     pub async fn get_endpoint_user_stats(
         &self,
         service_name: &str,
-        user_name: &str,
+        username: &str,
     ) -> Result<UserEndpointStats> {
         let url = format!(
             "services/{}/users/{}/endpoints/stats",
-            service_name, user_name
+            service_name, username
         );
         self.client.get(&url).await
     }
