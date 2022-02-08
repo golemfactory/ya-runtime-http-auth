@@ -20,14 +20,14 @@ nix = "0.23"
 
 [dependencies]
 #ya-runtime-sdk = { version = "0.2.0", features = ["macros"] }
-ya-runtime-sdk = { git = "https://github.com/golemfactory/ya-runtime-sdk.git", rev = "36f1dae85afe8937c2d13f946fae5de1faa3b545", features = ["macros"]}
+ya-runtime-sdk = { git = "https://github.com/golemfactory/ya-runtime-sdk.git", rev = "77784b7c7af1246780e1439a2725147965fe2f85", features = ["macros"]}
 ya-http-proxy-client = { version = "0.1", path = "crates/ya-http-proxy-client" }
 ya-http-proxy-model = { version = "0.1", path = "crates/ya-http-proxy-model" }
 
 actix-rt = "1.0.0"
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
-custom_derive = "0.1.7"
+derive_more = { version = "0.99", default-features = false, features = ["from"] }
 dirs = "4.0"
 enum_derive = "0.1.7"
 futures = "0.3"
@@ -41,6 +41,7 @@ serde = { version = "^1.0", features = ["derive"] }
 serde_default = "0.1"
 serde_json = "1.0"
 structopt = "0.3"
+strum = "0.23"
 thiserror = "1.0"
 tokio = { version = "0.2", features = ["io-std", "io-util", "fs", "rt-core", "rt-threaded", "process", "time"] }
 

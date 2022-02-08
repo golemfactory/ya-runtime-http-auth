@@ -51,8 +51,10 @@ pub async fn spawn(api: ManagementApi) -> anyhow::Result<()> {
                     .ok_or_else(|| anyhow::anyhow!("unable to retrieve executable directory"))?;
 
                 let path = exe_dir.join("ya-http-proxy");
-                if !path.is_executable() {
-                    anyhow::bail!("the proxy binary is not executable");
+                if !path.is_file() {
+                    anyhow::bail!("unable to find proxy binary");
+                } else if !path.is_executable() {
+                    anyhow::bail!("unable to execute proxy");
                 }
 
                 let mut command = Command::new(path);
