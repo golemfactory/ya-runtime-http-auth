@@ -732,12 +732,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "custom_derive"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef8ae57c4978a2acd8b869ce6b9ca1dfe817bff704c220209fdef2c0b75a01b9"
-
-[[package]]
 name = "darling"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2481,6 +2475,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "strum"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cae14b91c7d11c9a851d3fbc80a963198998c2a64eec840477fa92d8ce9b70bb"
+dependencies = [
+ "strum_macros",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5bb0dc7ee9c15cea6199cde9a127fa16a4c5819af85395457ad72d68edc85a38"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn",
+]
+
+[[package]]
 name = "syn"
 version = "1.0.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3138,6 +3154,7 @@ dependencies = [
  "http",
  "serde",
  "serde_json",
+ "strum",
 ]
 
 [[package]]
@@ -3165,7 +3182,7 @@ dependencies = [
  "actix-rt 1.1.1",
  "anyhow",
  "chrono",
- "custom_derive",
+ "derive_more",
  "dirs",
  "enum_derive",
  "fs2",
@@ -3180,6 +3197,7 @@ dependencies = [
  "serde_default",
  "serde_json",
  "structopt",
+ "strum",
  "thiserror",
  "tokio 0.2.25",
  "ya-http-proxy-client",
@@ -3190,7 +3208,7 @@ dependencies = [
 [[package]]
 name = "ya-runtime-sdk"
 version = "0.2.1"
-source = "git+https://github.com/golemfactory/ya-runtime-sdk.git?rev=36f1dae85afe8937c2d13f946fae5de1faa3b545#36f1dae85afe8937c2d13f946fae5de1faa3b545"
+source = "git+https://github.com/golemfactory/ya-runtime-sdk.git?rev=77784b7c7af1246780e1439a2725147965fe2f85#77784b7c7af1246780e1439a2725147965fe2f85"
 dependencies = [
  "anyhow",
  "directories",
@@ -3208,7 +3226,7 @@ dependencies = [
 [[package]]
 name = "ya-runtime-sdk-derive"
 version = "0.1.0"
-source = "git+https://github.com/golemfactory/ya-runtime-sdk.git?rev=36f1dae85afe8937c2d13f946fae5de1faa3b545#36f1dae85afe8937c2d13f946fae5de1faa3b545"
+source = "git+https://github.com/golemfactory/ya-runtime-sdk.git?rev=77784b7c7af1246780e1439a2725147965fe2f85#77784b7c7af1246780e1439a2725147965fe2f85"
 dependencies = [
  "proc-macro2",
  "quote",

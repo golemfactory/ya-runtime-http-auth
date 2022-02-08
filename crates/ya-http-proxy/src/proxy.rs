@@ -237,12 +237,19 @@ impl Proxy {
     where
         S: From<(model::CreateService, DateTime<Utc>)>,
     {
-        if create.from.is_empty() {
+        if create.from.trim().is_empty() {
             create.from = "/".to_string()
         }
+
         let mut state = self.state.write().await;
         let service = state.add_service(create)?;
-        Ok(S::from((service.created_with.clone(), service.created_at)))
+        let model = S::from((service.created_with.clone(), service.created_at));
+        let endpoint = service.created_with.from.clone();
+        drop(state);
+
+        let mut stats = self.stats.write().await;
+        stats.reset_endpoint(&endpoint);
+        Ok(model)
     }
 
     pub async fn remove(&self, service_name: &str) -> Result<(), Error> {
@@ -270,7 +277,12 @@ impl Proxy {
     ) -> Result<ProxyUser, Error> {
         let mut state = self.state.write().await;
         let service = state.get_service_mut(service_name)?;
-        Ok(service.add_user(username, password)?)
+        let user = service.add_user(username, password)?;
+        drop(state);
+
+        let mut stats = self.stats.write().await;
+        stats.reset_user(&user.username);
+        Ok(user)
     }
 
     pub async fn remove_user(&self, service_name: &str, username: &str) -> Result<(), Error> {
@@ -424,6 +436,16 @@ pub struct ProxyStats {
 }
 
 impl ProxyStats {
+    pub fn reset_endpoint(&mut self, endpoint: &str) {
+        self.endpoint.insert(endpoint.to_string(), 0);
+    }
+
+    pub fn reset_user(&mut self, username: &str) {
+        let username = username.to_string();
+        self.user.insert(username.clone(), 0);
+        self.user_endpoint.insert(username, Default::default());
+    }
+
     pub fn inc(&mut self, endpoint: &str, username: &str) {
         self.total += 1;
 

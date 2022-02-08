@@ -1,3 +1,4 @@
+mod command;
 mod lock;
 mod proxy;
 
@@ -19,16 +20,19 @@ use tokio::sync::RwLock;
 use ya_http_proxy_client::api::ManagementApi;
 use ya_http_proxy_client::web::{WebClient, DEFAULT_MANAGEMENT_API_URL};
 use ya_http_proxy_client::Error;
-use ya_http_proxy_model::{CreateService, CreateUser, GlobalStats};
+use ya_http_proxy_model::{CreateService, GlobalStats, Service, User};
 use ya_runtime_sdk::cli::parse_cli;
 use ya_runtime_sdk::env::Env;
+use ya_runtime_sdk::error::Error as SdkError;
 use ya_runtime_sdk::*;
+
+use crate::command::RuntimeCommand;
 
 type RuntimeCli = <BasicAuthRuntime as RuntimeDef>::Cli;
 
-const MANAGEMENT_API_URL_ENV_VAR: &str = "MANAGEMENT_API_URL";
-const COUNTER_NAME: &str = "golem.runtime.http-auth.requests.counter";
+const COUNTER_NAME: &str = "golem.runtime.http-auth.counter.requests";
 const COUNTER_PUBLISH_INTERVAL: Duration = Duration::from_secs(2);
+const MANAGEMENT_API_URL_ENV_VAR: &str = "MANAGEMENT_API_URL";
 const API_MAX_CONCURRENT_REQUESTS: usize = 3;
 
 #[derive(RuntimeDef)]
@@ -38,28 +42,36 @@ pub struct BasicAuthRuntime {
     basic_auth: Rc<RwLock<BasicAuth>>,
 }
 
-impl From<BasicAuth> for BasicAuthRuntime {
-    fn from(basic_auth: BasicAuth) -> Self {
-        Self {
-            basic_auth: Rc::new(RwLock::new(basic_auth)),
-        }
+impl From<ManagementApi> for BasicAuthRuntime {
+    fn from(api: ManagementApi) -> Self {
+        let basic_auth = Rc::new(RwLock::new(BasicAuth {
+            api,
+            handle: Default::default(),
+            service: Default::default(),
+            users: Default::default(),
+            global_stats: Default::default(),
+        }));
+        Self { basic_auth }
     }
 }
 
 pub struct BasicAuth {
     api: ManagementApi,
     handle: Option<AbortHandle>,
-    users: HashMap<CreateService, CreateUser>,
+    service: Option<Service>,
+    users: HashMap<String, User>,
     global_stats: GlobalStats,
 }
 
 impl BasicAuth {
     pub async fn count_requests(&self) -> usize {
-        futures::stream::iter(self.users.iter())
-            .map(|(s, u)| {
-                self.api
-                    .get_user_stats(s.name.as_str(), u.username.as_str())
-            })
+        let service_name = match self.service {
+            Some(ref service) => &service.inner.name,
+            None => return 0,
+        };
+
+        futures::stream::iter(self.users.keys())
+            .map(|username| self.api.get_user_stats(service_name, username))
             .buffer_unordered(API_MAX_CONCURRENT_REQUESTS)
             .filter_map(|r| async move { r.ok() })
             .fold(0, |mut acc, stats| async move {
@@ -70,22 +82,28 @@ impl BasicAuth {
     }
 
     pub async fn delete_users(&self) {
-        let failed = futures::stream::iter(self.users.iter())
-            .map(|(s, u)| self.api.delete_user(s.name.as_str(), u.username.as_str()))
+        let service_name = match self.service {
+            Some(ref service) => &service.inner.name,
+            None => return,
+        };
+
+        let total = self.users.len();
+        let failed = futures::stream::iter(self.users.keys())
+            .map(|username| self.api.delete_user(service_name, username))
             .buffer_unordered(API_MAX_CONCURRENT_REQUESTS)
-            .filter_map(|r| async move { r.err() })
+            .filter_map(|result| async move { result.err() })
             .count()
             .await;
 
         if failed > 0 {
-            log::error!("Failed to remove {} users", failed);
+            log::error!("Failed to remove {} out of {} users", failed, total);
         }
     }
 }
 
 #[derive(Default)]
 pub struct BasicAuthEnv {
-    service_name: Option<String>,
+    runtime_name: Option<String>,
 }
 
 #[derive(StructOpt)]
@@ -107,38 +125,33 @@ fn default_management_api_url() -> String {
 }
 
 impl Env<RuntimeCli> for BasicAuthEnv {
+    fn runtime_name(&self) -> Option<String> {
+        self.runtime_name.clone()
+    }
+
     fn cli(&mut self, project_name: &str, project_version: &str) -> anyhow::Result<RuntimeCli> {
         let cli: RuntimeCli = parse_cli(project_name, project_version, self.args())?;
-        self.service_name = Some(cli.runtime.name.clone());
+        self.runtime_name = Some(cli.runtime.name.clone());
         Ok(cli)
     }
 }
 
 impl Runtime for BasicAuthRuntime {
     fn deploy<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
-        let result = match config_lookup(ctx) {
-            Some(_) => Ok(None),
-            None => Err(ya_runtime_sdk::error::Error::from_string(
-                "Config file not found".to_string(),
-            )),
-        };
-        async move { result }.boxed_local()
+        if config_lookup(ctx).is_none() {
+            return SdkError::response("Config file not found");
+        }
+        async move { Ok(None) }.boxed_local()
     }
 
     fn start<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
         let emitter = match ctx.emitter.clone() {
             Some(emitter) => emitter,
-            None => {
-                let err = anyhow::anyhow!("Not running in server mode");
-                return futures::future::err(err.into()).boxed_local();
-            }
+            None => return SdkError::response("Not running in server mode"),
         };
         let service = match config_lookup(ctx) {
             Some(service) => service,
-            None => {
-                let err = anyhow::anyhow!("Config file not found");
-                return futures::future::err(err.into()).boxed_local();
-            }
+            None => return SdkError::response("Config file not found"),
         };
 
         let basic_auth = self.basic_auth.clone();
@@ -149,10 +162,13 @@ impl Runtime for BasicAuthRuntime {
             };
 
             proxy::spawn(api.clone()).await?;
-            try_create_service(api.clone(), service.clone()).await?;
-
+            let service = try_create_service(api.clone(), service.clone()).await?;
             let (h, reg) = AbortHandle::new_pair();
-            basic_auth.write().await.handle.replace(h);
+            {
+                let mut inner = basic_auth.write().await;
+                inner.service.replace(service);
+                inner.handle.replace(h);
+            }
 
             tokio::task::spawn_local(Abortable::new(
                 async move {
@@ -183,10 +199,7 @@ impl Runtime for BasicAuthRuntime {
     fn stop<'a>(&mut self, ctx: &mut Context<Self>) -> EmptyResponse<'a> {
         let emitter = match ctx.emitter.clone() {
             Some(emitter) => emitter,
-            None => {
-                let err = anyhow::anyhow!("Not running in server mode");
-                return futures::future::err(err.into()).boxed_local();
-            }
+            None => return SdkError::response("Not running in server mode"),
         };
 
         let inner = self.basic_auth.clone();
@@ -212,25 +225,31 @@ impl Runtime for BasicAuthRuntime {
         _mode: RuntimeMode,
         ctx: &mut Context<Self>,
     ) -> ProcessIdResponse<'a> {
-        ctx.command(|mut run_ctx| async move {
-            run_ctx.stdout(format!("{:?}", cmd)).await;
-            Ok(())
+        let basic_auth = self.basic_auth.clone();
+
+        ctx.command(|_| async move {
+            let mut basic_auth = basic_auth.write().await;
+            let service_name = basic_auth
+                .service
+                .as_ref()
+                .map(|s| s.inner.name.clone())
+                .ok_or_else(|| SdkError::from_string("Service not running"))?;
+
+            let cmd = RuntimeCommand::new(cmd.args)?;
+            cmd.execute(service_name, &mut basic_auth).await
         })
     }
 
     fn offer<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
         let service = match config_lookup(ctx) {
             Some(service) => service,
-            None => {
-                let err = anyhow::anyhow!("Config file not found");
-                return futures::future::err(err.into()).boxed_local();
-            }
+            None => return SdkError::response("Config file not found"),
         };
 
         async move {
             Ok(Some(crate::serialize::json::json!({
-            "golem.runtime.http-auth.meta": "",
-            "golem.runtime.http-auth.service.cpu-threads": service.cpu_threads
+                "golem.runtime.http-auth.meta": "",
+                "golem.runtime.http-auth.service.cpu-threads": service.cpu_threads
             })))
         }
         .boxed_local()
@@ -238,23 +257,14 @@ impl Runtime for BasicAuthRuntime {
 
     fn test<'a>(&mut self, ctx: &mut Context<Self>) -> EmptyResponse<'a> {
         if config_lookup(ctx).is_none() {
-            return async move {
-                Err(ya_runtime_sdk::error::Error::from_string(
-                    "Config file not found".to_string(),
-                ))
-            }
-            .boxed_local();
+            return SdkError::response("Config file not found");
         };
 
         let inner = self.basic_auth.clone();
         async move {
             let inner = inner.read().await;
             let api = inner.api.clone();
-
-            match proxy::spawn(api).await {
-                Ok(()) => Ok(()),
-                Err(e) => Err(ya_runtime_sdk::error::Error::from(e)),
-            }
+            proxy::spawn(api).await.map_err(Into::into)
         }
         .boxed_local()
     }
@@ -264,17 +274,10 @@ fn main() -> anyhow::Result<()> {
     let runtime =
         ya_runtime_sdk::build::<BasicAuthRuntime, _, _, _>(BasicAuthEnv::default(), move |ctx| {
             let api_url = ctx.conf.management_api_url.clone();
-
             async move {
                 let client = WebClient::new(api_url)?;
                 let api = ManagementApi::new(client);
-
-                Ok(BasicAuthRuntime::from(BasicAuth {
-                    api,
-                    handle: None,
-                    users: Default::default(),
-                    global_stats: Default::default(),
-                }))
+                Ok(BasicAuthRuntime::from(api))
             }
         });
 
@@ -300,28 +303,23 @@ fn find_config(
     paths: Vec<PathBuf>,
     ctx: &mut Context<BasicAuthRuntime>,
 ) -> anyhow::Result<Option<CreateService>> {
-    let mut dir_paths = vec![];
-
-    for path in paths {
-        let dirs = read_dir(path)?;
-        dir_paths.push(dirs.filter_map(|d| d.ok()).map(|d| d.path()).collect());
-    }
-
-    dir_paths = dir_paths
+    let candidates = paths
         .into_iter()
-        .filter(|p: &PathBuf| match p.extension() {
+        .filter_map(|p| read_dir(p).ok())
+        .flatten()
+        .filter_map(|r| r.ok().map(|e| e.path()))
+        .filter(|p| match p.extension() {
             Some(ext) => ext == "json",
             None => false,
-        })
-        .collect();
+        });
 
-    for dir_path in dir_paths {
-        let cs = read_config(dir_path)?;
-        if cs.name == ctx.env.runtime_name().unwrap() {
-            return Ok(Some(cs));
+    let runtime_name = ctx.env.runtime_name().unwrap();
+    for path in candidates {
+        let service = read_config(path)?;
+        if service.name == runtime_name {
+            return Ok(Some(service));
         }
     }
-
     Ok(None)
 }
 
@@ -342,20 +340,23 @@ async fn emit_counter(counter_name: String, mut emitter: EventEmitter, value: f6
         .await;
 }
 
-async fn try_create_service(api: ManagementApi, service: CreateService) -> anyhow::Result<()> {
-    if let Err(err) = api.create_service(&service).await {
-        match err {
-            Error::SendRequestError {
+async fn try_create_service(
+    api: ManagementApi,
+    create_service: CreateService,
+) -> anyhow::Result<Service> {
+    match api.create_service(&create_service).await {
+        Err(
+            err @ Error::SendRequestError {
                 code: StatusCode::CONFLICT,
                 ..
-            } => {
-                let s = api.get_service(service.name.as_str()).await?;
-                if s.inner != service {
-                    anyhow::bail!(err);
-                }
+            },
+        ) => {
+            let service = api.get_service(create_service.name.as_str()).await?;
+            if service.inner != create_service {
+                anyhow::bail!(err);
             }
-            err => anyhow::bail!(err),
+            Ok(service)
         }
+        result => result.map_err(Into::into),
     }
-    Ok(())
 }
