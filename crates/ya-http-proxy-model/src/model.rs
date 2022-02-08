@@ -6,6 +6,7 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use http::uri::Uri;
 use serde::{Deserialize, Serialize};
+use strum::{EnumString, EnumVariantNames, IntoStaticStr};
 
 use crate::deser;
 
@@ -19,7 +20,9 @@ pub struct Auth {
 
 /// Authorization method
 #[non_exhaustive]
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(
+    Clone, Debug, Eq, PartialEq, Deserialize, Serialize, EnumString, EnumVariantNames, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
 pub enum AuthMethod {
     /// HTTP basic auth

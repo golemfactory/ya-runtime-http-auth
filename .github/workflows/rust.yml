@@ -51,12 +51,6 @@ jobs:
           path: target
           key: ${{ runner.os }}-cargo-build-target1-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace
-
       - name: Fmt
         uses: actions-rs/cargo@v1
         with:
@@ -67,3 +61,21 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: clippy
+
+      - name: Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --workspace
+
+      - name: Build workspace
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --workspace
+
+      - name: Build proxy binary
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --manifest-path crates/ya-http-proxy/Cargo.toml --bin ya-http-proxy --features bin

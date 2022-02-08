@@ -19,7 +19,7 @@ impl ManagementApi {
         self.client.get("services").await
     }
 
-    pub async fn create_service(&self, cs: &CreateService) -> Result<CreateService> {
+    pub async fn create_service(&self, cs: &CreateService) -> Result<Service> {
         self.client.post("services", cs).await
     }
 
@@ -40,7 +40,7 @@ impl ManagementApi {
         self.client.get(&url).await
     }
 
-    pub async fn create_user(&self, service_name: &str, cu: &CreateUser) -> Result<CreateUser> {
+    pub async fn create_user(&self, service_name: &str, cu: &CreateUser) -> Result<User> {
         let url = format!("services/{}/users", service_name);
         self.client.post(&url, cu).await
     }
