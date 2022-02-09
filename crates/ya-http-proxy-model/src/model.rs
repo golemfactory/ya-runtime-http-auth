@@ -58,6 +58,8 @@ pub struct CreateService {
     /// Unique Service name
     #[serde(default = "next_service_name")]
     pub name: String,
+    #[serde(default)]
+    pub server_name: Vec<String>,
     /// Listening address
     pub bind: SocketAddr,
     /// Certificate configuration

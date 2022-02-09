@@ -1,10 +1,9 @@
 mod command;
+mod config;
 mod lock;
 mod proxy;
 
 use std::collections::HashMap;
-use std::fs::{read_dir, File};
-use std::io::BufReader;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
@@ -24,14 +23,17 @@ use ya_http_proxy_model::{CreateService, GlobalStats, Service, User};
 use ya_runtime_sdk::cli::parse_cli;
 use ya_runtime_sdk::env::Env;
 use ya_runtime_sdk::error::Error as SdkError;
+use ya_runtime_sdk::serialize::json;
 use ya_runtime_sdk::*;
 
 use crate::command::RuntimeCommand;
 
 type RuntimeCli = <BasicAuthRuntime as RuntimeDef>::Cli;
 
-const COUNTER_NAME: &str = "golem.runtime.http-auth.counter.requests";
+pub const PROPERTIES_PREFIX: &str = "golem.runtime.http-auth.meta";
+const COUNTER_NAME: &str = "http-auth.requests";
 const COUNTER_PUBLISH_INTERVAL: Duration = Duration::from_secs(2);
+
 const MANAGEMENT_API_URL_ENV_VAR: &str = "MANAGEMENT_API_URL";
 const API_MAX_CONCURRENT_REQUESTS: usize = 3;
 
@@ -117,6 +119,8 @@ pub struct BasicAuthCli {
 pub struct BasicAuthConf {
     #[serde(default = "default_management_api_url")]
     pub management_api_url: String,
+    #[serde(default)]
+    pub service_lookup_dirs: Vec<PathBuf>,
 }
 
 fn default_management_api_url() -> String {
@@ -138,7 +142,7 @@ impl Env<RuntimeCli> for BasicAuthEnv {
 
 impl Runtime for BasicAuthRuntime {
     fn deploy<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
-        if config_lookup(ctx).is_none() {
+        if config::lookup(ctx).is_none() {
             return SdkError::response("Config file not found");
         }
         async move { Ok(None) }.boxed_local()
@@ -149,7 +153,7 @@ impl Runtime for BasicAuthRuntime {
             Some(emitter) => emitter,
             None => return SdkError::response("Not running in server mode"),
         };
-        let service = match config_lookup(ctx) {
+        let service = match config::lookup(ctx) {
             Some(service) => service,
             None => return SdkError::response("Config file not found"),
         };
@@ -162,7 +166,7 @@ impl Runtime for BasicAuthRuntime {
             };
 
             proxy::spawn(api.clone()).await?;
-            let service = try_create_service(api.clone(), service.clone()).await?;
+            let service = try_create_service(api.clone(), service.inner.clone()).await?;
             let (h, reg) = AbortHandle::new_pair();
             {
                 let mut inner = basic_auth.write().await;
@@ -241,27 +245,41 @@ impl Runtime for BasicAuthRuntime {
     }
 
     fn offer<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
-        let service = match config_lookup(ctx) {
+        let service = match config::lookup(ctx) {
             Some(service) => service,
             None => return SdkError::response("Config file not found"),
         };
 
+        let result = service.offer_properties(PROPERTIES_PREFIX);
+        let cpu_threads = service.inner.cpu_threads;
+
         async move {
-            Ok(Some(crate::serialize::json::json!({
-                "golem.runtime.http-auth.meta": "",
-                "golem.runtime.http-auth.service.cpu-threads": service.cpu_threads
-            })))
+            use anyhow::Context;
+
+            let mut output = result?;
+            let object = output
+                .as_object_mut()
+                .context("Programming error: offer properties are not a map")?;
+
+            if let Some(cpu_threads) = cpu_threads {
+                object.insert(
+                    format!("{}.cpu-threads", PROPERTIES_PREFIX),
+                    json::Value::Number(cpu_threads.into()),
+                );
+            }
+
+            Ok(Some(output))
         }
         .boxed_local()
     }
 
     fn test<'a>(&mut self, ctx: &mut Context<Self>) -> EmptyResponse<'a> {
-        if config_lookup(ctx).is_none() {
-            return SdkError::response("Config file not found");
-        };
-
+        let offer = self.offer(ctx);
         let inner = self.basic_auth.clone();
+
         async move {
+            offer.await?;
+
             let inner = inner.read().await;
             let api = inner.api.clone();
             proxy::spawn(api).await.map_err(Into::into)
@@ -283,52 +301,6 @@ fn main() -> anyhow::Result<()> {
 
     let mut system = actix_rt::System::new("runtime");
     system.block_on(runtime)
-}
-
-fn config_lookup(ctx: &mut Context<BasicAuthRuntime>) -> Option<CreateService> {
-    let mut paths = vec![];
-
-    if let Some(path) = dirs::config_dir() {
-        paths.push(path.join(env!("CARGO_PKG_NAME")))
-    }
-
-    if let Ok(path) = std::env::current_dir() {
-        paths.push(path)
-    }
-
-    find_config(paths, ctx).ok().flatten()
-}
-
-fn find_config(
-    paths: Vec<PathBuf>,
-    ctx: &mut Context<BasicAuthRuntime>,
-) -> anyhow::Result<Option<CreateService>> {
-    let candidates = paths
-        .into_iter()
-        .filter_map(|p| read_dir(p).ok())
-        .flatten()
-        .filter_map(|r| r.ok().map(|e| e.path()))
-        .filter(|p| match p.extension() {
-            Some(ext) => ext == "json",
-            None => false,
-        });
-
-    let runtime_name = ctx.env.runtime_name().unwrap();
-    for path in candidates {
-        let service = read_config(path)?;
-        if service.name == runtime_name {
-            return Ok(Some(service));
-        }
-    }
-    Ok(None)
-}
-
-fn read_config(path: PathBuf) -> anyhow::Result<CreateService> {
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-    let cs = serde_json::from_reader(reader)?;
-
-    Ok(cs)
 }
 
 async fn emit_counter(counter_name: String, mut emitter: EventEmitter, value: f64) {
