@@ -10,7 +10,7 @@ use ya_http_proxy_model::CreateService;
 use ya_runtime_sdk::serialize::{json, toml, yaml};
 use ya_runtime_sdk::Context;
 
-use crate::BasicAuthRuntime;
+use crate::HttpAuthRuntime;
 
 pub const SERVICES_SUBDIRECTORY: &str = "services";
 
@@ -68,7 +68,7 @@ fn sanitize_value(value: &json::Value) -> anyhow::Result<Option<json::Value>> {
     Ok(Some(value))
 }
 
-pub fn lookup(ctx: &mut Context<BasicAuthRuntime>) -> Option<ServiceConf> {
+pub fn lookup(ctx: &mut Context<HttpAuthRuntime>) -> Option<ServiceConf> {
     let mut paths = ctx.conf.service_lookup_dirs.clone();
 
     if let Some(path) = dirs::config_dir() {
@@ -86,7 +86,7 @@ pub fn lookup(ctx: &mut Context<BasicAuthRuntime>) -> Option<ServiceConf> {
     find(paths, ctx)
 }
 
-fn find(paths: Vec<PathBuf>, ctx: &mut Context<BasicAuthRuntime>) -> Option<ServiceConf> {
+fn find(paths: Vec<PathBuf>, ctx: &mut Context<HttpAuthRuntime>) -> Option<ServiceConf> {
     let runtime_name = ctx.env.runtime_name().unwrap();
     paths
         .into_iter()

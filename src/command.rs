@@ -7,7 +7,7 @@ use strum::VariantNames;
 use ya_http_proxy_model::{AuthMethod, CreateUser, User, UserEndpointStats};
 use ya_runtime_sdk::error::Error as SdkError;
 
-use crate::BasicAuth;
+use crate::HttpAuth;
 
 #[derive(Clone, Debug, Eq, PartialEq, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
@@ -24,7 +24,7 @@ impl RuntimeCommand {
     pub async fn execute(
         self,
         service_name: String,
-        rt: &mut BasicAuth,
+        rt: &mut HttpAuth,
     ) -> Result<RuntimeCommandOutput, SdkError> {
         match self {
             Self::User(cmd) => cmd.execute(service_name, rt).await.map(Into::into),
@@ -79,7 +79,7 @@ impl UserCommand {
     pub async fn execute(
         self,
         service_name: String,
-        rt: &mut BasicAuth,
+        rt: &mut HttpAuth,
     ) -> Result<UserCommandOutput, SdkError> {
         match self {
             Self::Add {

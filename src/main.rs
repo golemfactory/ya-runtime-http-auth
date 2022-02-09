@@ -28,36 +28,36 @@ use ya_runtime_sdk::*;
 
 use crate::command::RuntimeCommand;
 
-type RuntimeCli = <BasicAuthRuntime as RuntimeDef>::Cli;
+type RuntimeCli = <HttpAuthRuntime as RuntimeDef>::Cli;
 
-pub const PROPERTIES_PREFIX: &str = "golem.runtime.http-auth.meta";
+pub const PROPERTY_PREFIX: &str = "golem.runtime.http-auth.meta";
 const COUNTER_NAME: &str = "http-auth.requests";
 const COUNTER_PUBLISH_INTERVAL: Duration = Duration::from_secs(2);
 
 const MANAGEMENT_API_URL_ENV_VAR: &str = "MANAGEMENT_API_URL";
-const API_MAX_CONCURRENT_REQUESTS: usize = 3;
+const MANAGEMENT_API_MAX_CONCURRENT_REQUESTS: usize = 3;
 
 #[derive(RuntimeDef)]
-#[cli(BasicAuthCli)]
-#[conf(BasicAuthConf)]
-pub struct BasicAuthRuntime {
-    basic_auth: Rc<RwLock<BasicAuth>>,
+#[cli(HttpAuthCli)]
+#[conf(HttpAuthConf)]
+pub struct HttpAuthRuntime {
+    http_auth: Rc<RwLock<HttpAuth>>,
 }
 
-impl From<ManagementApi> for BasicAuthRuntime {
+impl From<ManagementApi> for HttpAuthRuntime {
     fn from(api: ManagementApi) -> Self {
-        let basic_auth = Rc::new(RwLock::new(BasicAuth {
+        let http_auth = Rc::new(RwLock::new(HttpAuth {
             api,
             handle: Default::default(),
             service: Default::default(),
             users: Default::default(),
             global_stats: Default::default(),
         }));
-        Self { basic_auth }
+        Self { http_auth }
     }
 }
 
-pub struct BasicAuth {
+pub struct HttpAuth {
     api: ManagementApi,
     handle: Option<AbortHandle>,
     service: Option<Service>,
@@ -65,7 +65,7 @@ pub struct BasicAuth {
     global_stats: GlobalStats,
 }
 
-impl BasicAuth {
+impl HttpAuth {
     pub async fn count_requests(&self) -> usize {
         let service_name = match self.service {
             Some(ref service) => &service.inner.name,
@@ -74,7 +74,7 @@ impl BasicAuth {
 
         futures::stream::iter(self.users.keys())
             .map(|username| self.api.get_user_stats(service_name, username))
-            .buffer_unordered(API_MAX_CONCURRENT_REQUESTS)
+            .buffer_unordered(MANAGEMENT_API_MAX_CONCURRENT_REQUESTS)
             .filter_map(|r| async move { r.ok() })
             .fold(0, |mut acc, stats| async move {
                 acc += stats.requests;
@@ -92,7 +92,7 @@ impl BasicAuth {
         let total = self.users.len();
         let failed = futures::stream::iter(self.users.keys())
             .map(|username| self.api.delete_user(service_name, username))
-            .buffer_unordered(API_MAX_CONCURRENT_REQUESTS)
+            .buffer_unordered(MANAGEMENT_API_MAX_CONCURRENT_REQUESTS)
             .filter_map(|result| async move { result.err() })
             .count()
             .await;
@@ -104,19 +104,19 @@ impl BasicAuth {
 }
 
 #[derive(Default)]
-pub struct BasicAuthEnv {
+pub struct HttpAuthEnv {
     runtime_name: Option<String>,
 }
 
 #[derive(StructOpt)]
 #[structopt(rename_all = "kebab-case")]
-pub struct BasicAuthCli {
+pub struct HttpAuthCli {
     name: String,
 }
 
 #[derive(Deserialize, Serialize, DefaultFromSerde)]
 #[serde(rename_all = "camelCase")]
-pub struct BasicAuthConf {
+pub struct HttpAuthConf {
     #[serde(default = "default_management_api_url")]
     pub management_api_url: String,
     #[serde(default)]
@@ -128,7 +128,7 @@ fn default_management_api_url() -> String {
         .unwrap_or_else(|_| DEFAULT_MANAGEMENT_API_URL.to_string())
 }
 
-impl Env<RuntimeCli> for BasicAuthEnv {
+impl Env<RuntimeCli> for HttpAuthEnv {
     fn runtime_name(&self) -> Option<String> {
         self.runtime_name.clone()
     }
@@ -140,7 +140,7 @@ impl Env<RuntimeCli> for BasicAuthEnv {
     }
 }
 
-impl Runtime for BasicAuthRuntime {
+impl Runtime for HttpAuthRuntime {
     fn deploy<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
         if config::lookup(ctx).is_none() {
             return SdkError::response("Config file not found");
@@ -158,10 +158,10 @@ impl Runtime for BasicAuthRuntime {
             None => return SdkError::response("Config file not found"),
         };
 
-        let basic_auth = self.basic_auth.clone();
+        let http_auth = self.http_auth.clone();
         async move {
             let api = {
-                let inner = basic_auth.read().await;
+                let inner = http_auth.read().await;
                 inner.api.clone()
             };
 
@@ -169,7 +169,7 @@ impl Runtime for BasicAuthRuntime {
             let service = try_create_service(api.clone(), service.inner.clone()).await?;
             let (h, reg) = AbortHandle::new_pair();
             {
-                let mut inner = basic_auth.write().await;
+                let mut inner = http_auth.write().await;
                 inner.service.replace(service);
                 inner.handle.replace(h);
             }
@@ -178,12 +178,12 @@ impl Runtime for BasicAuthRuntime {
                 async move {
                     loop {
                         let total_req = {
-                            let inner = basic_auth.read().await;
+                            let inner = http_auth.read().await;
                             inner.count_requests().await
                         };
 
                         if let Ok(stats) = api.get_global_stats().await {
-                            basic_auth.write().await.global_stats = stats;
+                            http_auth.write().await.global_stats = stats;
                         }
 
                         emit_counter(COUNTER_NAME.to_string(), emitter.clone(), total_req as f64)
@@ -206,7 +206,7 @@ impl Runtime for BasicAuthRuntime {
             None => return SdkError::response("Not running in server mode"),
         };
 
-        let inner = self.basic_auth.clone();
+        let inner = self.http_auth.clone();
         async move {
             let inner = inner.read().await;
             if let Some(handle) = &inner.handle {
@@ -229,18 +229,18 @@ impl Runtime for BasicAuthRuntime {
         _mode: RuntimeMode,
         ctx: &mut Context<Self>,
     ) -> ProcessIdResponse<'a> {
-        let basic_auth = self.basic_auth.clone();
+        let http_auth = self.http_auth.clone();
 
         ctx.command(|_| async move {
-            let mut basic_auth = basic_auth.write().await;
-            let service_name = basic_auth
+            let mut http_auth = http_auth.write().await;
+            let service_name = http_auth
                 .service
                 .as_ref()
                 .map(|s| s.inner.name.clone())
                 .ok_or_else(|| SdkError::from_string("Service not running"))?;
 
             let cmd = RuntimeCommand::new(cmd.args)?;
-            cmd.execute(service_name, &mut basic_auth).await
+            cmd.execute(service_name, &mut http_auth).await
         })
     }
 
@@ -250,7 +250,7 @@ impl Runtime for BasicAuthRuntime {
             None => return SdkError::response("Config file not found"),
         };
 
-        let result = service.offer_properties(PROPERTIES_PREFIX);
+        let result = service.offer_properties(PROPERTY_PREFIX);
         let cpu_threads = service.inner.cpu_threads;
 
         async move {
@@ -263,7 +263,7 @@ impl Runtime for BasicAuthRuntime {
 
             if let Some(cpu_threads) = cpu_threads {
                 object.insert(
-                    format!("{}.cpu-threads", PROPERTIES_PREFIX),
+                    format!("{}.cpu-threads", PROPERTY_PREFIX),
                     json::Value::Number(cpu_threads.into()),
                 );
             }
@@ -275,7 +275,7 @@ impl Runtime for BasicAuthRuntime {
 
     fn test<'a>(&mut self, ctx: &mut Context<Self>) -> EmptyResponse<'a> {
         let offer = self.offer(ctx);
-        let inner = self.basic_auth.clone();
+        let inner = self.http_auth.clone();
 
         async move {
             offer.await?;
@@ -290,12 +290,12 @@ impl Runtime for BasicAuthRuntime {
 
 fn main() -> anyhow::Result<()> {
     let runtime =
-        ya_runtime_sdk::build::<BasicAuthRuntime, _, _, _>(BasicAuthEnv::default(), move |ctx| {
+        ya_runtime_sdk::build::<HttpAuthRuntime, _, _, _>(HttpAuthEnv::default(), move |ctx| {
             let api_url = ctx.conf.management_api_url.clone();
             async move {
                 let client = WebClient::new(api_url)?;
                 let api = ManagementApi::new(client);
-                Ok(BasicAuthRuntime::from(api))
+                Ok(HttpAuthRuntime::from(api))
             }
         });
 

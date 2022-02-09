@@ -1,1 +1,1 @@
-# ya-runtime-basic-auth
+# ya-runtime-http-auth

@@ -94,19 +94,19 @@ jobs:
           OS_NAME: linux
         run: |
           TAG_NAME="${GITHUB_REF##*/}"
-          TARGET_DIR=releases/ya-runtime-basic-auth-linux-${TAG_NAME}
+          TARGET_DIR=releases/ya-runtime-http-auth-linux-${TAG_NAME}
 
-          mkdir -p "$TARGET_DIR/ya-runtime-basic-auth"
-          strip "target/x86_64-unknown-linux-musl/release/ya-runtime-basic-auth"
+          mkdir -p "$TARGET_DIR/ya-runtime-http-auth"
+          strip "target/x86_64-unknown-linux-musl/release/ya-runtime-http-auth"
           strip "target/x86_64-unknown-linux-musl/release/ya-http-proxy"
 
           set -x
-          cp target/x86_64-unknown-linux-musl/release/ya-runtime-basic-auth "$TARGET_DIR/ya-runtime-basic-auth/"
-          cp target/x86_64-unknown-linux-musl/release/ya-http-proxy "$TARGET_DIR/ya-runtime-basic-auth/"
-          cp conf/ya-runtime-basic-auth.json "$TARGET_DIR/"
-          (cd releases && tar czvf "ya-runtime-basic-auth-${OS_NAME}-${TAG_NAME}.tar.gz" "ya-runtime-basic-auth-${OS_NAME}-${TAG_NAME}")
+          cp target/x86_64-unknown-linux-musl/release/ya-runtime-http-auth "$TARGET_DIR/ya-runtime-http-auth/"
+          cp target/x86_64-unknown-linux-musl/release/ya-http-proxy "$TARGET_DIR/ya-runtime-http-auth/"
+          cp conf/ya-runtime-http-auth.json "$TARGET_DIR/"
+          (cd releases && tar czvf "ya-runtime-http-auth-${OS_NAME}-${TAG_NAME}.tar.gz" "ya-runtime-http-auth-${OS_NAME}-${TAG_NAME}")
 
-          echo "::set-output name=artifact::ya-runtime-basic-auth-${OS_NAME}-${TAG_NAME}.tar.gz"
+          echo "::set-output name=artifact::ya-runtime-http-auth-${OS_NAME}-${TAG_NAME}.tar.gz"
           echo "::set-output name=media::application/tar+gzip"
 
       - name: Upload
