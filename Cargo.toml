@@ -1,18 +1,18 @@
 [package]
-name = "ya-runtime-basic-auth"
+name = "ya-runtime-http-auth"
 description = "HTTP authentication runtime for exposing services on Golem Network"
 version = "0.1.0"
 authors = ["Golem Factory <contact@golem.network>"]
-repository = "https://github.com/golemfactory/ya-runtime-basic-auth"
+repository = "https://github.com/golemfactory/ya-runtime-http-auth"
 edition = "2021"
 license = "GPL-3.0"
 readme = "README.md"
 
 [package.metadata.deb]
 assets = [
-    ["target/x86_64-unknown-linux-musl/release/ya-http-proxy", "usr/lib/yagna/plugins/ya-runtime-basic-auth/", "755"],
-    ["target/x86_64-unknown-linux-musl/release/ya-runtime-basic-auth", "usr/lib/yagna/plugins/ya-runtime-basic-auth/", "755"],
-    ["conf/ya-runtime-basic-auth.json", "usr/lib/yagna/plugins/", "644"],
+    ["target/x86_64-unknown-linux-musl/release/ya-http-proxy", "usr/lib/yagna/plugins/ya-runtime-http-auth/", "755"],
+    ["target/x86_64-unknown-linux-musl/release/ya-runtime-http-auth", "usr/lib/yagna/plugins/ya-runtime-http-auth/", "755"],
+    ["target/x86_64-unknown-linux-musl/release/ya-runtime-http-auth/ya-runtime-http-auth.json", "usr/lib/yagna/plugins/", "644"],
 ]
 
 [target.'cfg(target_family = "unix")'.dependencies]

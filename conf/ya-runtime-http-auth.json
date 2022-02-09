@@ -1,0 +1,10 @@
+[
+  {
+    "name": "http-auth",
+    "version": "0.1.0",
+    "supervisor-path": "exe-unit",
+    "runtime-path": "ya-runtime-http-auth/ya-runtime-http-auth",
+    "description": "HTTP auth runtime",
+    "extra-args": ["--runtime-managed-image"]
+  }
+]
