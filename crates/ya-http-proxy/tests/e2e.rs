@@ -142,6 +142,7 @@ async fn e2e() -> anyhow::Result<()> {
 
     let create_service = model::CreateService {
         name: service_name.clone(),
+        server_name: Default::default(),
         bind: service_addr,
         cert: Default::default(),
         auth: Some(model::Auth {
