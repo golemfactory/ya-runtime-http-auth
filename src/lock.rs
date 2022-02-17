@@ -2,11 +2,11 @@ use fs2::FileExt;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
-pub const LOCK_FILE_EXT: &str = ".lock";
+pub const LOCK_FILE_EXT: &str = "lock";
 
 pub fn with_lock_ext<P: AsRef<Path>>(path: P) -> PathBuf {
     let mut path = path.as_ref().to_owned();
-    path.push(LOCK_FILE_EXT);
+    path.set_extension(LOCK_FILE_EXT);
     path
 }
 

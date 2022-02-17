@@ -117,10 +117,21 @@ pub struct HttpAuthCli {
 #[derive(Deserialize, Serialize, DefaultFromSerde)]
 #[serde(rename_all = "camelCase")]
 pub struct HttpAuthConf {
+    #[serde(default = "default_data_dir")]
+    pub data_dir: PathBuf,
     #[serde(default = "default_management_api_url")]
     pub management_api_url: String,
     #[serde(default)]
     pub service_lookup_dirs: Vec<PathBuf>,
+}
+
+fn default_data_dir() -> PathBuf {
+    let crate_name = env!("CARGO_PKG_NAME");
+    match dirs::data_dir() {
+        Some(dir) => dir,
+        None => std::env::temp_dir(),
+    }
+    .join(crate_name)
 }
 
 fn default_management_api_url() -> String {
@@ -145,6 +156,14 @@ impl Runtime for HttpAuthRuntime {
         if config::lookup(ctx).is_none() {
             return SdkError::response("Config file not found");
         }
+
+        if std::fs::create_dir_all(&ctx.conf.data_dir).is_err() {
+            return SdkError::response(format!(
+                "Cannot create data directory: {}",
+                ctx.conf.data_dir.display()
+            ));
+        }
+
         async move { Ok(None) }.boxed_local()
     }
 
@@ -158,6 +177,7 @@ impl Runtime for HttpAuthRuntime {
             None => return SdkError::response("Config file not found"),
         };
 
+        let data_dir = ctx.conf.data_dir.clone();
         let http_auth = self.http_auth.clone();
         async move {
             let api = {
@@ -165,7 +185,7 @@ impl Runtime for HttpAuthRuntime {
                 inner.api.clone()
             };
 
-            proxy::spawn(api.clone()).await?;
+            proxy::spawn(api.clone(), data_dir).await?;
             let service = try_create_service(api.clone(), service.inner.clone()).await?;
             let (h, reg) = AbortHandle::new_pair();
             {
@@ -282,7 +302,9 @@ impl Runtime for HttpAuthRuntime {
 
             let inner = inner.read().await;
             let api = inner.api.clone();
-            proxy::spawn(api).await.map_err(Into::into)
+            proxy::spawn(api, std::env::temp_dir())
+                .await
+                .map_err(Into::into)
         }
         .boxed_local()
     }

@@ -1,18 +1,21 @@
-use is_executable::IsExecutable;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use crate::lock::{with_lock_ext, LockFile};
+use is_executable::IsExecutable;
 
 use ya_http_proxy_client::api::ManagementApi;
 use ya_http_proxy_client::Error;
 
+use crate::lock::{with_lock_ext, LockFile};
+
 const TIMEOUT: Duration = Duration::from_secs(3);
 const SLEEP: Duration = Duration::from_millis(500);
 
-pub async fn spawn(api: ManagementApi) -> anyhow::Result<()> {
+pub async fn spawn(api: ManagementApi, data_dir: PathBuf) -> anyhow::Result<()> {
     let started = Instant::now();
-    let mut lock = LockFile::new(with_lock_ext(std::env::current_dir().unwrap_or_default()));
+    let lock_path = with_lock_ext(data_dir.join(env!("CARGO_PKG_NAME")));
+    let mut lock = LockFile::new(&lock_path);
     let mut state = ProxyState::Unknown;
 
     loop {
@@ -59,6 +62,8 @@ pub async fn spawn(api: ManagementApi) -> anyhow::Result<()> {
 
                 let mut command = Command::new(path);
                 command
+                    .arg("--log-dir")
+                    .arg(&data_dir.to_string_lossy().to_string())
                     .current_dir(std::env::current_dir()?)
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
