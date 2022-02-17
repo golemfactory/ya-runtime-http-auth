@@ -19,6 +19,7 @@ pub const SERVICES_SUBDIRECTORY: &str = "services";
 pub struct ServiceConf {
     #[serde(flatten)]
     pub inner: CreateService,
+    #[serde(default)]
     offer_properties: HashMap<String, json::Value>,
 }
 
