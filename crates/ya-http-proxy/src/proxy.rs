@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
-use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use futures::channel::oneshot;
@@ -13,8 +12,9 @@ use tokio::task::LocalSet;
 use crate::conf::ProxyConf;
 use crate::error::{Error, ProxyError, ServiceError, UserError};
 use crate::proxy::handler::forward_req;
-use crate::proxy::stream::TlsAddrStream;
+use crate::proxy::stream::HttpStream;
 use ya_http_proxy_model as model;
+use ya_http_proxy_model::Addresses;
 
 mod client;
 mod handler;
@@ -24,7 +24,7 @@ mod stream;
 #[derive(Clone)]
 pub struct ProxyManager {
     pub default_conf: Arc<ProxyConf>,
-    pub(crate) proxies: Arc<RwLock<HashMap<SocketAddr, Proxy>>>,
+    pub(crate) proxies: Arc<RwLock<HashMap<Addresses, Proxy>>>,
 }
 
 impl ProxyManager {
@@ -38,7 +38,9 @@ impl ProxyManager {
     #[inline]
     pub async fn get_or_spawn(&self, create: &mut model::CreateService) -> Result<Proxy, Error> {
         let instances = self.proxies.write().await;
-        match instances.get(&create.bind) {
+        let addrs = create.addresses();
+
+        match instances.get(&addrs) {
             Some(proxy) => Ok(proxy.clone()),
             None => {
                 drop(instances);
@@ -49,13 +51,16 @@ impl ProxyManager {
 
     async fn spawn(&self, create: &mut model::CreateService) -> Result<Proxy, Error> {
         let mut services = self.proxies.write().await;
-        if services.contains_key(&create.bind) {
-            return Err(ProxyError::AlreadyExists(create.bind).into());
+        let addrs = create.addresses();
+
+        if services.contains_key(&addrs) {
+            return Err(ProxyError::AlreadyRunning(addrs).into());
         }
 
         let conf = self.conf_update(create)?;
         let name = create.name.clone();
-        let addr = conf.server.addr;
+        let addrs = conf.server.addresses();
+        let proxy_addrs = addrs.clone();
         let cpu_threads = create.cpu_threads;
 
         let (tx, rx) = oneshot::channel();
@@ -76,18 +81,18 @@ impl ProxyManager {
 
             let fut = async move {
                 let mut proxy = Proxy::new(conf);
-                let server = proxy.start().await?;
-                Ok((proxy, server))
+                let finished = proxy.start().await?;
+                Ok((proxy, finished))
             }
             .then(|result| async move {
                 match result {
-                    Ok((proxy, server)) => {
+                    Ok((proxy, finished)) => {
                         let _ = tx.send(Ok(proxy));
 
-                        log::info!("Proxy '{}' is listening on {}", name, addr);
-                        match server.await {
-                            Ok(_) => log::info!("Proxy '{}' [{}] stopped", name, addr),
-                            Err(e) => log::error!("Proxy '{}' [{}] error: {}", name, addr, e),
+                        log::info!("Proxy '{}' is listening on {}", name, addrs);
+                        match finished.await {
+                            Ok(_) => log::info!("Proxy '{}' stopped [{}]", name, addrs),
+                            Err(e) => log::error!("Proxy '{}' [{}] error: {}", name, addrs, e),
                         }
                     }
                     Err(err) => {
@@ -103,7 +108,7 @@ impl ProxyManager {
         match rx.await {
             Ok(result) => {
                 if let Ok(ref proxy) = result {
-                    services.insert(addr, proxy.clone());
+                    services.insert(proxy_addrs, proxy.clone());
                 }
                 result
             }
@@ -113,7 +118,9 @@ impl ProxyManager {
 
     fn conf_update(&self, create: &mut model::CreateService) -> Result<ProxyConf, ProxyError> {
         let mut conf = (*self.default_conf).clone();
-        conf.server.addr = create.bind;
+        conf.server.bind_https = create.bind_https.clone().or(conf.server.bind_https);
+        conf.server.bind_http = create.bind_http.clone().or(conf.server.bind_http);
+
         create.cpu_threads = create
             .cpu_threads
             .take()
@@ -142,7 +149,7 @@ impl ProxyManager {
         Ok(conf)
     }
 
-    pub(crate) fn proxies(&self) -> Arc<RwLock<HashMap<SocketAddr, Proxy>>> {
+    pub(crate) fn proxies(&self) -> Arc<RwLock<HashMap<Addresses, Proxy>>> {
         self.proxies.clone()
     }
 
@@ -154,6 +161,12 @@ impl ProxyManager {
             }
         }
         Err(ServiceError::NotFound(service_name.to_string()).into())
+    }
+
+    pub(crate) async fn stop(&self) {
+        let mut proxies = { std::mem::take(&mut *self.proxies.write().await) };
+        proxies.values_mut().for_each(|p| p.stop());
+        std::process::exit(0);
     }
 }
 
@@ -179,22 +192,27 @@ impl Proxy {
     pub async fn start(
         &mut self,
     ) -> Result<impl Future<Output = hyper::Result<()>> + 'static, Error> {
-        let (tx, rx) = oneshot::channel();
+        if self.conf.server.bind_https.is_none() && self.conf.server.bind_http.is_none() {
+            return Err(ProxyError::Conf("No listening addresses specified".to_string()).into());
+        }
+
         {
-            let mut stop_tx = self.stop_tx.lock().unwrap();
+            let stop_tx = self.stop_tx.lock().unwrap();
             if stop_tx.is_some() {
-                return Err(ProxyError::AlreadyExists(self.conf.server.addr).into());
+                return Err(ProxyError::AlreadyRunning(self.conf.server.addresses()).into());
             }
-            stop_tx.replace(tx);
         }
 
         let client = client::build(&self.conf.client);
-        let state = self.state.clone();
-        let stats = self.stats.clone();
+        let (tx, rx) = oneshot::channel();
+        let rx = rx.shared();
 
-        let server = server::listen(&self.conf.server)
-            .await?
-            .serve(make_service_fn(move |stream: &TlsAddrStream| {
+        let handler = || {
+            let client = client.clone();
+            let state = self.state.clone();
+            let stats = self.stats.clone();
+
+            move |stream: &HttpStream| {
                 let client = client.clone();
                 let state = state.clone();
                 let stats = stats.clone();
@@ -205,15 +223,55 @@ impl Proxy {
                         forward_req(req, state.clone(), stats.clone(), client.clone(), address)
                     }))
                 }
-            }));
+            }
+        };
 
-        Ok(server.with_graceful_shutdown(rx.map(|_| ())))
+        let rx_ = rx.clone();
+        let https = server::listen_https(&self.conf.server)
+            .await?
+            .map(|builder| {
+                builder
+                    .serve(make_service_fn(handler()))
+                    .with_graceful_shutdown(rx_.map(|_| ()))
+                    .boxed()
+            });
+
+        let rx_ = rx;
+        let http = server::listen_http(&self.conf.server)
+            .await?
+            .map(|builder| {
+                builder
+                    .serve(make_service_fn(handler()))
+                    .with_graceful_shutdown(rx_.map(|_| ()))
+                    .boxed()
+            });
+
+        {
+            let mut stop_tx = self.stop_tx.lock().unwrap();
+            stop_tx.replace(tx);
+        }
+
+        Ok(async move {
+            match (http, https) {
+                (Some(http), Some(https)) => {
+                    futures::future::try_join(http, https).await?;
+                    Ok(())
+                }
+                (http, https) => {
+                    http.or(https)
+                        .unwrap_or_else(|| futures::future::ok(()).boxed())
+                        .await
+                }
+            }
+        })
     }
 
     pub fn stop(&mut self) {
-        if let Some(tx) = self.stop_tx.lock().unwrap().take() {
-            let _ = tx.send(());
-        }
+        std::mem::take(&mut *self.stop_tx.lock().unwrap())
+            .into_iter()
+            .for_each(|tx| {
+                let _ = tx.send(());
+            });
     }
 }
 

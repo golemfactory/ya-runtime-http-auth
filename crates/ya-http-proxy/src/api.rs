@@ -87,7 +87,8 @@ fn router(manager: ProxyManager) -> routerify::Result<Router<Body, HandlerError>
         .get(
             "/services/:service/users/:user/endpoints/stats",
             get_user_endpoint_stats,
-        );
+        )
+        .post("/control/shutdown", post_shutdown);
 
     builder.err_handler(err_handler).build()
 }
@@ -145,7 +146,7 @@ where
 {
     fn from(e: T) -> Self {
         match Error::from(e) {
-            e @ Error::Proxy(ProxyError::AlreadyExists(_)) => Self::Conflict(e),
+            e @ Error::Proxy(ProxyError::AlreadyRunning(_)) => Self::Conflict(e),
             e @ Error::Service(ServiceError::AlreadyExists { .. }) => Self::Conflict(e),
             e @ Error::User(UserError::AlreadyExists(_)) => Self::Conflict(e),
             e => Self::BadRequest(e),

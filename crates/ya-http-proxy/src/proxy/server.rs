@@ -12,16 +12,61 @@ use tokio_rustls::TlsAcceptor;
 use crate::conf::ServerConf;
 use crate::conf_builder_server;
 use crate::error::{Error, TlsError};
-use crate::proxy::stream::TlsAddrStream;
+use crate::proxy::stream::HttpStream;
 
-pub async fn listen(
+pub async fn listen_http(
     conf: &ServerConf,
-) -> Result<Builder<impl Accept<Conn = TlsAddrStream, Error = std::io::Error>>, Error> {
-    let tls_conf = read_tls_conf(conf)?;
-    let tcp_listener = TcpListener::bind(&conf.addr).await?;
-    let tls_acceptor = TlsAcceptor::from(tls_conf);
+) -> Result<Option<Builder<impl Accept<Conn = HttpStream, Error = std::io::Error>>>, Error> {
+    let addrs = match conf.bind_http.as_ref() {
+        Some(addrs) => addrs.to_vec(),
+        None => return Ok(None),
+    };
 
+    let tcp_listener = TcpListener::bind(addrs.as_slice()).await?;
     let (tx, rx) = futures::channel::mpsc::channel(64);
+
+    tokio::task::spawn(async move {
+        loop {
+            match tcp_listener.accept().await {
+                Ok((stream, addr)) => {
+                    let mut tx = tx.clone();
+                    tokio::task::spawn(async move {
+                        let stream = HttpStream::plain(stream, addr);
+                        let _ = tx.send(Ok(stream)).await;
+                    });
+                }
+                // FIXME: handle network errors
+                Err(err) => match tcp_listener.local_addr() {
+                    Ok(_) => log::debug!("Client error: {}", err),
+                    Err(_) => {
+                        log::error!("Network error: {}", err);
+                        break;
+                    }
+                },
+            }
+        }
+    });
+
+    let acceptor = accept::from_stream(rx);
+    let mut builder = Server::builder(acceptor);
+    conf_builder_server!(builder, conf);
+
+    Ok(Some(builder))
+}
+
+pub async fn listen_https(
+    conf: &ServerConf,
+) -> Result<Option<Builder<impl Accept<Conn = HttpStream, Error = std::io::Error>>>, Error> {
+    let addrs = match conf.bind_https.as_ref() {
+        Some(addrs) => addrs.to_vec(),
+        None => return Ok(None),
+    };
+
+    let tls_conf = read_tls_conf(conf)?;
+    let tcp_listener = TcpListener::bind(addrs.as_slice()).await?;
+    let tls_acceptor = TlsAcceptor::from(tls_conf);
+    let (tx, rx) = futures::channel::mpsc::channel(64);
+
     tokio::task::spawn(async move {
         loop {
             match tcp_listener.accept().await {
@@ -33,7 +78,7 @@ pub async fn listen(
                     tokio::task::spawn(async move {
                         match tls_acceptor.accept(socket).await {
                             Ok(stream) => {
-                                let stream = TlsAddrStream::new(stream, addr);
+                                let stream = HttpStream::tls(stream, addr);
                                 let _ = tx.send(Ok(stream)).await;
                             }
                             Err(error) => log::warn!("[{}] TLS error: {}", addr, error),
@@ -56,7 +101,7 @@ pub async fn listen(
     let mut builder = Server::builder(acceptor);
     conf_builder_server!(builder, conf);
 
-    Ok(builder)
+    Ok(Some(builder))
 }
 
 fn read_tls_conf(conf: &ServerConf) -> Result<Arc<rustls::ServerConfig>, Error> {

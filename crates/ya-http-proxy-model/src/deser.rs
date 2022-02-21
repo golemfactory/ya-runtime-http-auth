@@ -263,10 +263,66 @@ pub mod uri {
     }
 }
 
+pub mod one_or_many {
+    use std::fmt;
+    use std::marker::PhantomData;
+    use std::str::FromStr;
+
+    use serde::{de, Deserialize};
+
+    pub struct OneOrManyVisitor<T> {
+        marker: PhantomData<T>,
+    }
+
+    impl<T> Default for OneOrManyVisitor<T> {
+        fn default() -> Self {
+            Self {
+                marker: PhantomData,
+            }
+        }
+    }
+
+    impl<'de, T> de::Visitor<'de> for OneOrManyVisitor<T>
+    where
+        T: FromStr + Deserialize<'de>,
+    {
+        type Value = Vec<T>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a single `SocketAddr`s or a sequence thereof")
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            let addr = v
+                .parse()
+                .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))?;
+            Ok(vec![addr])
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: de::SeqAccess<'de>,
+        {
+            let mut vec = Vec::new();
+            while let Some(addr) = seq.next_element()? {
+                vec.push(addr);
+            }
+            Ok(vec)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use serde::{Deserialize, Serialize};
+    use std::net::SocketAddr;
+    use std::str::FromStr;
     use std::time::Duration;
+
+    use crate::deser::one_or_many::OneOrManyVisitor;
+    use serde::{de, Deserialize, Serialize};
 
     #[derive(Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
     struct SerdeStruct {
@@ -279,6 +335,25 @@ mod tests {
         #[serde(skip_serializing_if = "Option::is_none")]
         #[serde(default, with = "super::duration::double_opt_ms")]
         pub duration_double: Option<Option<Duration>>,
+    }
+
+    #[derive(Debug, Default, PartialEq, Eq, Serialize)]
+    struct SerdeProperty {
+        pub inner: Vec<SocketAddr>,
+    }
+
+    impl<'de> Deserialize<'de> for SerdeProperty {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: de::Deserializer<'de>,
+        {
+            let mut addrs: Vec<SocketAddr> =
+                deserializer.deserialize_any(OneOrManyVisitor::<SocketAddr>::default())?;
+            addrs.sort();
+            addrs.dedup();
+
+            Ok(SerdeProperty { inner: addrs })
+        }
     }
 
     struct SerdeHelper {
@@ -331,5 +406,24 @@ mod tests {
         assert_eq!(st, SerdeHelper::new(&st).de());
         st.duration_double = None;
         assert_eq!(st, SerdeHelper::new(&st).de());
+    }
+
+    #[test]
+    fn one_or_many() {
+        let sp: SerdeProperty = serde_json::from_str(r#""0.0.0.0:0""#).unwrap();
+        assert_eq!(
+            *sp.inner.get(0).unwrap(),
+            SocketAddr::from_str("0.0.0.0:0").unwrap()
+        );
+
+        let sp: SerdeProperty = serde_json::from_str(r#"["0.0.0.0:0", "1.1.1.1:1"]"#).unwrap();
+        assert_eq!(
+            *sp.inner.get(0).unwrap(),
+            SocketAddr::from_str("0.0.0.0:0").unwrap()
+        );
+        assert_eq!(
+            *sp.inner.get(1).unwrap(),
+            SocketAddr::from_str("1.1.1.1:1").unwrap()
+        );
     }
 }

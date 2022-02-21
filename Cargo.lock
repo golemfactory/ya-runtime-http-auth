@@ -3102,7 +3102,6 @@ dependencies = [
  "jemallocator",
  "log",
  "openssl",
- "pin-project-lite 0.2.8",
  "routerify",
  "rustls",
  "rustls-pemfile",

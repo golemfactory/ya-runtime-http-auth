@@ -35,7 +35,6 @@ futures = { version = "0.3" }
 hyper = { version = "0.14", features = ["full"] }
 hyper-rustls = { version = "0.23", features = ["http2"] }
 log = { version =  "0.4" }
-pin-project-lite = { version = "0.2" }
 routerify = { version = "3.0" }
 rustls = { version = "0.20" }
 rustls-pemfile = { version = "0.2" }

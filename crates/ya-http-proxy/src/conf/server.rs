@@ -1,4 +1,3 @@
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -6,14 +5,18 @@ use serde::{Deserialize, Serialize};
 use serde_default::DefaultFromSerde;
 
 use crate::conf::common::CommonConf;
-use ya_http_proxy_model::deser;
+use ya_http_proxy_model::{deser, Addresses};
 
 /// Configuration for the HTTP proxy server
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, DefaultFromSerde)]
 pub struct ServerConf {
-    /// Service listening address
-    #[serde(default = "default::addr")]
-    pub addr: SocketAddr,
+    /// Default service HTTPS listening address
+    #[serde(alias = "addr")]
+    #[serde(default)]
+    pub bind_https: Option<Addresses>,
+    /// Default service HTTP listening address
+    #[serde(default)]
+    pub bind_http: Option<Addresses>,
     /// Number of CPU (worker) threads to use
     #[serde(default)]
     pub cpu_threads: Option<usize>,
@@ -54,6 +57,16 @@ pub struct ServerConf {
     pub server_common: CommonConf,
 }
 
+impl ServerConf {
+    pub fn addresses(&self) -> Addresses {
+        let mut addrs = self.bind_https.clone().unwrap_or_default();
+        if let Some(a) = self.bind_http.clone() {
+            addrs.0.extend(a.0);
+        }
+        addrs
+    }
+}
+
 /// Client CA certificate configuration for the HTTPS client used by a Proxy
 #[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerCertConf {
@@ -62,12 +75,7 @@ pub struct ServerCertConf {
 }
 
 mod default {
-    use std::net::SocketAddr;
     use std::time::Duration;
-
-    pub fn addr() -> SocketAddr {
-        SocketAddr::from(([0, 0, 0, 0], 443))
-    }
 
     pub const fn tcp_keepalive() -> Option<Option<Duration>> {
         Some(Some(Duration::from_secs(300)))

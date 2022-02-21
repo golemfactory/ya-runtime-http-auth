@@ -40,7 +40,7 @@ struct Cli {
 impl Cli {
     fn update_conf(&self, conf: &mut ProxyConf) {
         if let Some(addr) = self.default_addr {
-            conf.server.addr = addr;
+            conf.server.bind_https = Some(addr.into());
         }
         if let Some(ref path) = self.default_cert {
             conf.server.server_cert.server_cert_store_path = Some(path.clone());
