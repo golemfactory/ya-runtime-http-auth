@@ -17,6 +17,7 @@ pub async fn forward_req(
     address: SocketAddr,
 ) -> hyper::Result<hyper::Response<hyper::Body>> {
     let path = req.uri().path();
+    let headers = req.headers();
     let state = proxy_state.read().await;
 
     // Check whether the service is registered
@@ -29,7 +30,7 @@ pub async fn forward_req(
         None => return response(StatusCode::NOT_FOUND),
     };
     // Extract credentials from header
-    let auth = match extract_basic_auth(req.headers()) {
+    let auth = match extract_basic_auth(headers) {
         Ok(auth) => auth,
         Err(_) => return response(StatusCode::UNAUTHORIZED),
     };
@@ -43,27 +44,36 @@ pub async fn forward_req(
 
     // Decode credentials
     let decoded_auth = match decode_base64(auth) {
-        Ok(cred) => cred,
+        Ok(decoded_auth) => decoded_auth,
         Err(_) => return response(StatusCode::UNAUTHORIZED),
     };
     let username = match extract_username(&decoded_auth) {
-        Ok(cred) => cred,
+        Ok(username) => username,
         Err(_) => return response(StatusCode::UNAUTHORIZED),
     };
+
+    // Domain name
+    let host = extract_host(headers);
+
     // Update request stats
     {
         let mut stats = proxy_stats.write().await;
         stats.inc(path, username);
     }
 
-    log::debug!("{} -> {}", path, proxy_to);
+    log::debug!("[{}] {} -> {}", username, path, proxy_to);
 
     // Write proxy headers
     let headers = req.headers_mut();
+
     headers.insert(
         HeaderName::from_static("x-forwarded-for"),
         HeaderValue::try_from(address.ip().to_string()).unwrap(),
     );
+
+    if let Some(host) = host {
+        headers.insert(HeaderName::from_static("x-forwarded-host"), host);
+    }
 
     *req.uri_mut() = proxy_to;
     client.request(req).await
@@ -81,6 +91,11 @@ fn response(code: StatusCode) -> hyper::Result<hyper::Response<hyper::Body>> {
 fn decode_base64(string: &str) -> Result<String, ()> {
     let decoded = base64::decode(string).map_err(|_| ())?;
     String::from_utf8(decoded).map_err(|_| ())
+}
+
+#[inline]
+fn extract_host(headers: &HeaderMap) -> Option<HeaderValue> {
+    headers.get(header::HOST).cloned()
 }
 
 #[inline]

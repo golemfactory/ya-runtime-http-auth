@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -8,7 +7,7 @@ use http::uri::Uri;
 use serde::{Deserialize, Serialize};
 use strum::{EnumString, EnumVariantNames, IntoStaticStr};
 
-use crate::deser;
+use crate::{deser, Addresses};
 
 /// Authorization configuration
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -60,8 +59,11 @@ pub struct CreateService {
     pub name: String,
     #[serde(default)]
     pub server_name: Vec<String>,
-    /// Listening address
-    pub bind: SocketAddr,
+    /// HTTPS listening addresses
+    #[serde(alias = "bind")]
+    pub bind_https: Option<Addresses>,
+    /// HTTP listening addresses
+    pub bind_http: Option<Addresses>,
     /// Certificate configuration
     pub cert: Option<CreateServiceCert>,
     /// Authorization options
@@ -78,6 +80,16 @@ pub struct CreateService {
     pub cpu_threads: Option<usize>,
     /// Forwarding options
     pub user: Option<CreateServiceUser>,
+}
+
+impl CreateService {
+    pub fn addresses(&self) -> Addresses {
+        let addrs = self.bind_https.clone().unwrap_or_default();
+        match self.bind_http.clone() {
+            Some(a) => addrs + a,
+            _ => addrs,
+        }
+    }
 }
 
 /// HTTP request forward options

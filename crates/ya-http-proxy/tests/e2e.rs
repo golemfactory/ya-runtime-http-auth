@@ -1,5 +1,6 @@
 #![allow(unused)]
 
+use std::collections::HashSet;
 use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -12,7 +13,9 @@ use serde::{Deserialize, Serialize};
 
 use ya_http_proxy::{Management, ProxyConf, ProxyManager};
 use ya_http_proxy_model as model;
+use ya_http_proxy_model::Addresses;
 
+#[derive(Clone)]
 struct WebClient {
     url: Uri,
     inner: awc::Client,
@@ -28,7 +31,15 @@ impl WebClient {
         })
     }
 
-    pub fn new_permissive_tls(url: String, username: &str, password: &str) -> Result<Self> {
+    pub fn new_service(url: String, username: &str, password: &str) -> Result<Self> {
+        Ok(Self {
+            url: url.parse()?,
+            inner: awc::Client::new(),
+            credentials: Some((username.to_string(), password.to_string())),
+        })
+    }
+
+    pub fn new_service_tls(url: String, username: &str, password: &str) -> Result<Self> {
         let mut builder = SslConnector::builder(SslMethod::tls_client())?;
         builder.set_verify(SslVerifyMode::NONE);
         let connector = Connector::new().openssl(builder.build());
@@ -101,41 +112,33 @@ fn default_proxy_conf() -> Result<ProxyConf> {
     let cert_key_path = cert_dir.join("server.key");
 
     let mut conf = ProxyConf::default();
-    conf.server.addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+    conf.server.bind_https = Some(SocketAddr::from(([127, 0, 0, 1], 8080)).into());
+    conf.server.bind_https = Some(SocketAddr::from(([127, 0, 0, 1], 8080)).into());
     conf.server.server_cert.server_cert_store_path = Some(cert_store_path);
     conf.server.server_cert.server_key_path = Some(cert_key_path);
 
     Ok(conf)
 }
 
-async fn e2e() -> anyhow::Result<()> {
-    let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "info".into());
-    env::set_var("RUST_LOG", &log_level);
-    env_logger::init();
-
+async fn e2e_requests(client: WebClient) -> anyhow::Result<()> {
     let service_name = "test-service".to_string();
-    let service_addr: SocketAddr = "127.0.0.1:8443".parse()?;
+    let service_https: SocketAddr = "127.0.0.1:8443".parse()?;
+    let service_http: SocketAddr = "127.0.0.1:8080".parse()?;
+
     let service_endpoint = "/test".to_string();
-    let service_url = format!(
+    let service_https_url = format!(
         "https://localhost:{}{}",
-        service_addr.port(),
+        service_https.port(),
+        service_endpoint
+    );
+    let service_http_url = format!(
+        "http://localhost:{}{}",
+        service_http.port(),
         service_endpoint
     );
 
     let fwd_service_addr = service::spawn("127.0.0.1:0".to_string()).await?;
     let fwd_service_url = format!("http://{}/resource", fwd_service_addr);
-
-    let proxy_conf = default_proxy_conf()?;
-    let mut management = Management::new(ProxyManager::new(proxy_conf.clone()));
-    management.bind("127.0.0.1:9090".parse()?)?;
-    let management_url = format!("http://{}", management.local_addr()?);
-
-    tokio::task::spawn(async move {
-        if let Err(e) = management.await {
-            panic!("Management API server error: {}", e);
-        }
-        println!("Management API server stopped");
-    });
 
     let user_name = "user1".to_string();
     let password = "password123".to_string();
@@ -143,7 +146,8 @@ async fn e2e() -> anyhow::Result<()> {
     let create_service = model::CreateService {
         name: service_name.clone(),
         server_name: Default::default(),
-        bind: service_addr,
+        bind_https: Some(service_https.into()),
+        bind_http: Some(service_http.into()),
         cert: Default::default(),
         auth: Some(model::Auth {
             method: model::AuthMethod::Basic,
@@ -158,8 +162,6 @@ async fn e2e() -> anyhow::Result<()> {
         username: user_name.clone(),
         password: password.clone(),
     };
-
-    let client = WebClient::new(management_url)?;
 
     let services_get: Vec<model::Service> = client.get("services").await?;
     assert_eq!(0, services_get.len());
@@ -195,14 +197,17 @@ async fn e2e() -> anyhow::Result<()> {
         .await?;
     assert_eq!(1, users_get.len());
 
-    println!();
-    println!("[-] Requesting {}", service_url);
+    println!("[+] Requesting {}", service_http_url);
+    let service_client = WebClient::new_service(service_http_url, &user_name, &password)?;
+    let response: Result<String, _> = service_client.get("").await;
+    println!("[+] Response: {:?}", response);
+    response.expect("request failed");
 
-    let service_client = WebClient::new_permissive_tls(service_url, &user_name, &password)?;
-    let response: String = service_client.get("").await?;
-
-    println!("[-] Response: {:?}", response);
-    println!();
+    println!("[+] Requesting {}", service_https_url);
+    let service_client = WebClient::new_service_tls(service_https_url, &user_name, &password)?;
+    let response: Result<String, _> = service_client.get("").await;
+    println!("[+] Response: {:?}", response);
+    response.expect("request failed");
 
     let stats_get: model::UserStats = client
         .get(format!(
@@ -237,6 +242,30 @@ async fn e2e() -> anyhow::Result<()> {
     assert_eq!(0, services_get.len());
 
     Ok(())
+}
+
+async fn e2e() -> anyhow::Result<()> {
+    let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "info".into());
+    env::set_var("RUST_LOG", &log_level);
+    env_logger::init();
+
+    let proxy_conf = default_proxy_conf()?;
+    let mut management = Management::new(ProxyManager::new(proxy_conf.clone()));
+    management.bind("127.0.0.1:9090".parse()?)?;
+    let management_url = format!("http://{}", management.local_addr()?);
+
+    tokio::task::spawn(async move {
+        if let Err(e) = management.await {
+            panic!("Management API server error: {}", e);
+        }
+        println!("Management API server stopped");
+    });
+
+    let client = WebClient::new(management_url)?;
+    let result = e2e_requests(client.clone()).await;
+    let _ = client.post::<_, (), _>("control/shutdown", &()).await;
+
+    result
 }
 
 #[cfg(feature = "tests-e2e")]

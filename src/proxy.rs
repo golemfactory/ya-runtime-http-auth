@@ -20,7 +20,7 @@ pub async fn spawn(api: ManagementApi, data_dir: PathBuf) -> anyhow::Result<()> 
 
     loop {
         if Instant::now() - started >= TIMEOUT {
-            anyhow::bail!("Proxy timed out after {}s", TIMEOUT.as_secs_f32());
+            anyhow::bail!("proxy timed out after {}s", TIMEOUT.as_secs_f32());
         }
 
         state = match std::mem::replace(&mut state, ProxyState::Poisoned) {
@@ -107,7 +107,7 @@ fn spawn_detached_command(mut command: Command) -> anyhow::Result<()> {
         use nix::unistd::{fork, setsid, ForkResult};
         use std::process::exit;
 
-        match unsafe { fork().expect("Failed to fork process") } {
+        match unsafe { fork().expect("failed to fork the process") } {
             ForkResult::Parent { child } => {
                 let _ = waitpid(Some(child), None);
             }

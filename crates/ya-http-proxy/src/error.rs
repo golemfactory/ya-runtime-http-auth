@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::path::Path;
+use ya_http_proxy_model::Addresses;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -52,8 +53,8 @@ pub enum ManagementError {
 
 #[derive(thiserror::Error, Debug)]
 pub enum ProxyError {
-    #[error("Proxy is already running on {}", .0.to_string())]
-    AlreadyExists(std::net::SocketAddr),
+    #[error("Proxy is already running on addresses: {0}")]
+    AlreadyRunning(Addresses),
     #[error("Proxy runtime error: {0}")]
     Runtime(String),
     #[error("Proxy configuration error: {0}")]

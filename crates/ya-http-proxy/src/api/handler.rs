@@ -140,6 +140,7 @@ pub async fn get_user_stats(req: Request<Body>) -> HandlerResult {
         .get(username)
         .copied()
         .ok_or_else(|| UserError::NotFound(username.to_string()))?;
+
     Response::object(&model::UserStats { requests })
 }
 
@@ -155,7 +156,16 @@ pub async fn get_user_endpoint_stats(req: Request<Body>) -> HandlerResult {
         .user_endpoint
         .get(username)
         .ok_or_else(|| UserError::NotFound(username.to_string()))?;
+
     Response::object(&model::UserEndpointStats(endpoint_requests.clone()))
+}
+
+/// Shuts down the proxy
+pub async fn post_shutdown(req: Request<Body>) -> HandlerResult {
+    let manager: &ProxyManager = req.data().unwrap();
+    manager.stop().await;
+
+    Response::object(&())
 }
 
 trait ResponseExt<B, E> {
