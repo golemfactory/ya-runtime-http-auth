@@ -23,8 +23,14 @@ impl<'de> Deserialize<'de> for Addresses {
     {
         let mut addrs: Vec<SocketAddr> =
             deserializer.deserialize_any(OneOrManyVisitor::<SocketAddr>::default())?;
+
+        if addrs.is_empty() {
+            return Err(de::Error::custom("empty sequence"));
+        }
+
         addrs.sort();
         addrs.dedup();
+
         Ok(Addresses(addrs.into_iter().collect()))
     }
 }
