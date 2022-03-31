@@ -78,6 +78,13 @@ pub fn lookup(ctx: &mut Context<HttpAuthRuntime>) -> Option<ServiceConf> {
             .join(SERVICES_SUBDIRECTORY)
     }));
 
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(path) = exe_path.parent() {
+            let path = path.join(SERVICES_SUBDIRECTORY);
+            paths.push(path);
+        }
+    }
+
     if let Ok(path) = std::env::current_dir() {
         let path = path.join(SERVICES_SUBDIRECTORY);
         paths.push(path);
