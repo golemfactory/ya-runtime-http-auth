@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -54,25 +54,28 @@ impl From<(CreateService, DateTime<Utc>)> for Service {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PubService {
-    pub created_at: DateTime<Utc>,
     pub name: String,
     pub server_name: Vec<String>,
-    pub is_https: bool,
-    pub is_http: bool,
+    pub port_https: HashSet<u16>,
+    pub port_http: HashSet<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeouts: Option<Timeouts>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpu_threads: Option<usize>,
+    pub created_at: DateTime<Utc>,
 }
 
 impl From<Service> for PubService {
     fn from(service: Service) -> Self {
+        let port_https = service.inner.https_ports();
+        let port_http = service.inner.http_ports();
+
         Self {
             created_at: service.created_at,
             name: service.inner.name,
             server_name: service.inner.server_name,
-            is_https: service.inner.bind_https.is_some(),
-            is_http: service.inner.bind_http.is_some(),
+            port_https,
+            port_http,
             timeouts: service.inner.timeouts,
             cpu_threads: service.inner.cpu_threads,
         }
@@ -118,6 +121,21 @@ impl CreateService {
         match self.bind_http.clone() {
             Some(a) => addrs + a,
             _ => addrs,
+        }
+    }
+
+    pub fn https_ports(&self) -> HashSet<u16> {
+        Self::ports(&self.bind_https)
+    }
+
+    pub fn http_ports(&self) -> HashSet<u16> {
+        Self::ports(&self.bind_http)
+    }
+
+    fn ports(bind: &Option<Addresses>) -> HashSet<u16> {
+        match bind {
+            Some(addrs) => addrs.0.iter().map(|a| a.port()).collect(),
+            None => Default::default(),
         }
     }
 }
