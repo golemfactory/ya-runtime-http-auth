@@ -150,9 +150,7 @@ fn read_cert_key(path: impl AsRef<Path>) -> Result<rustls::PrivateKey, Error> {
         .map_err(|e| TlsError::ServerCertKey(format!("cannot open '{}': {}", path.display(), e)))?;
     let mut reader = io::BufReader::new(file);
 
-    let mut keys;
-
-    keys = rustls_pemfile::rsa_private_keys(&mut reader).map_err(|e| {
+    let mut keys = rustls_pemfile::rsa_private_keys(&mut reader).map_err(|e| {
         TlsError::ServerCertKey(format!("error reading '{}': {}", path.display(), e))
     })?;
 

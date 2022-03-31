@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use awc::Connector;
-use http::{Method, Uri};
+use hyper::http::{Method, Uri};
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use serde::{Deserialize, Serialize};
 

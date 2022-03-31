@@ -3096,7 +3096,6 @@ dependencies = [
  "envy",
  "flexi_logger",
  "futures",
- "http",
  "hyper",
  "hyper-rustls",
  "jemallocator",
