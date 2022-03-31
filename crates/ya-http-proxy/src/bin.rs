@@ -71,8 +71,8 @@ async fn run(addr: SocketAddr, conf: ProxyConf) -> anyhow::Result<()> {
 }
 
 fn setup_logging(log_dir: Option<impl AsRef<Path>>) -> anyhow::Result<()> {
-    let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "info".into());
-    env::set_var("RUST_LOG", &log_level);
+    let log_level = env::var("PROXY_LOG").unwrap_or_else(|_| "info".into());
+    env::set_var("PROXY_LOG", &log_level);
 
     let mut logger = Logger::try_with_str(&log_level)?;
 
@@ -89,7 +89,7 @@ fn setup_logging(log_dir: Option<impl AsRef<Path>>) -> anyhow::Result<()> {
             .log_to_file(FileSpec::default().directory(log_dir))
             .duplicate_to_stderr(Duplicate::All)
             .rotate(
-                Criterion::Size(4 * 1024 * 1024),
+                Criterion::Size(2 * 1024 * 1024),
                 Naming::Timestamps,
                 Cleanup::KeepLogFiles(7),
             )
@@ -97,6 +97,7 @@ fn setup_logging(log_dir: Option<impl AsRef<Path>>) -> anyhow::Result<()> {
 
     logger
         .format_for_stderr(log_format)
+        .format_for_files(log_format)
         .print_message()
         .start()?;
 
