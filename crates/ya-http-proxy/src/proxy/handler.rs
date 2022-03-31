@@ -31,6 +31,8 @@ pub async fn forward_req(
         Some((_, service)) => service,
         None => return response(StatusCode::NOT_FOUND),
     };
+
+    // TODO: consider reading credentials from URL
     // Extract credentials from header
     let auth = match extract_basic_auth(headers) {
         Ok(auth) => auth,
