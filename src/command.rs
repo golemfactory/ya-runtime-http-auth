@@ -140,7 +140,6 @@ pub enum ServiceCommand {
 #[derive(Clone, Debug, Serialize, From)]
 #[serde(untagged)]
 pub enum ServiceCommandOutput {
-    None,
     Service(PubService),
 }
 
