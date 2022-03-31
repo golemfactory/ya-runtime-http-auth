@@ -49,11 +49,11 @@ pub async fn forward_req(
     // Decode credentials
     let decoded_auth = match decode_base64(auth) {
         Ok(decoded_auth) => decoded_auth,
-        Err(_) => return response(StatusCode::UNAUTHORIZED),
+        Err(_) => return response(StatusCode::FORBIDDEN),
     };
     let username = match extract_username(&decoded_auth) {
         Ok(username) => username,
-        Err(_) => return response(StatusCode::UNAUTHORIZED),
+        Err(_) => return response(StatusCode::FORBIDDEN),
     };
 
     // Domain name
@@ -88,10 +88,12 @@ pub async fn forward_req(
 
 #[inline]
 fn response(code: StatusCode) -> hyper::Result<hyper::Response<hyper::Body>> {
-    Ok(Response::builder()
-        .status(code)
-        .body(hyper::Body::empty())
-        .unwrap())
+    let mut builder = Response::builder().status(code);
+
+    if code == StatusCode::UNAUTHORIZED {
+        builder = builder.header(header::WWW_AUTHENTICATE, "Basic realm=\"Service access\"");
+    }
+    Ok(builder.body(hyper::Body::empty()).unwrap())
 }
 
 #[inline]
