@@ -17,6 +17,9 @@ pub struct ServerConf {
     /// Default service HTTP listening address
     #[serde(default)]
     pub bind_http: Option<Addresses>,
+    /// Default public IP address / domain name information
+    #[serde(default)]
+    pub public_address: Vec<String>,
     /// Number of CPU (worker) threads to use
     #[serde(default)]
     pub cpu_threads: Option<usize>,

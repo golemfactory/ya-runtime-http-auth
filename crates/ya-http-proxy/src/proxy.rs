@@ -118,8 +118,31 @@ impl ProxyManager {
 
     fn conf_update(&self, create: &mut model::CreateService) -> Result<ProxyConf, ProxyError> {
         let mut conf = (*self.default_conf).clone();
-        conf.server.bind_https = create.bind_https.clone().or(conf.server.bind_https);
-        conf.server.bind_http = create.bind_http.clone().or(conf.server.bind_http);
+
+        match create.bind_https {
+            Some(ref addrs) => {
+                conf.server.bind_https.replace(addrs.clone());
+            }
+            None => create.bind_https = conf.server.bind_https.clone(),
+        }
+        match create.bind_http {
+            Some(ref addrs) => {
+                conf.server.bind_http.replace(addrs.clone());
+            }
+            None => create.bind_http = conf.server.bind_http.clone(),
+        }
+
+        if create.server_name.is_empty() {
+            if conf.server.public_address.is_empty() {
+                return Err(ProxyError::Conf(
+                    "Missing public address information".to_string(),
+                ));
+            }
+
+            create.server_name = conf.server.public_address.clone();
+        } else {
+            conf.server.public_address = create.server_name.clone();
+        }
 
         create.cpu_threads = create
             .cpu_threads
