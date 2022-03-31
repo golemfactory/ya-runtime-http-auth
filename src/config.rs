@@ -70,14 +70,13 @@ fn sanitize_value(value: &json::Value) -> anyhow::Result<Option<json::Value>> {
 }
 
 pub fn lookup(ctx: &mut Context<HttpAuthRuntime>) -> Option<ServiceConf> {
-    let mut paths = ctx.conf.service_lookup_dirs.clone();
+    let mut paths: Vec<_> = ctx.conf.service_lookup_dirs.clone();
+    let local_paths = vec![dirs::data_local_dir(), dirs::config_dir()];
 
-    if let Some(path) = dirs::config_dir() {
-        let path = path
-            .join(env!("CARGO_PKG_NAME"))
-            .join(SERVICES_SUBDIRECTORY);
-        paths.push(path);
-    }
+    paths.extend(local_paths.into_iter().flatten().map(|path| {
+        path.join(env!("CARGO_PKG_NAME"))
+            .join(SERVICES_SUBDIRECTORY)
+    }));
 
     if let Ok(path) = std::env::current_dir() {
         let path = path.join(SERVICES_SUBDIRECTORY);
@@ -89,6 +88,7 @@ pub fn lookup(ctx: &mut Context<HttpAuthRuntime>) -> Option<ServiceConf> {
 
 fn find(paths: Vec<PathBuf>, ctx: &mut Context<HttpAuthRuntime>) -> Option<ServiceConf> {
     let runtime_name = ctx.env.runtime_name().unwrap();
+
     paths
         .into_iter()
         .filter_map(|p| read_dir(p).ok())
