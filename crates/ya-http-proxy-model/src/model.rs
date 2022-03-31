@@ -50,6 +50,35 @@ impl From<(CreateService, DateTime<Utc>)> for Service {
     }
 }
 
+/// Public service information
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PubService {
+    pub created_at: DateTime<Utc>,
+    pub name: String,
+    pub server_name: Vec<String>,
+    pub is_https: bool,
+    pub is_http: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeouts: Option<Timeouts>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_threads: Option<usize>,
+}
+
+impl From<Service> for PubService {
+    fn from(service: Service) -> Self {
+        Self {
+            created_at: service.created_at,
+            name: service.inner.name,
+            server_name: service.inner.server_name,
+            is_https: service.inner.bind_https.is_some(),
+            is_http: service.inner.bind_http.is_some(),
+            timeouts: service.inner.timeouts,
+            cpu_threads: service.inner.cpu_threads,
+        }
+    }
+}
+
 /// New service descriptor
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -57,6 +86,7 @@ pub struct CreateService {
     /// Unique Service name
     #[serde(default = "next_service_name")]
     pub name: String,
+    /// Domain names or public IP addresses
     #[serde(default)]
     pub server_name: Vec<String>,
     /// HTTPS listening addresses

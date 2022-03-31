@@ -4,7 +4,7 @@ use serde::Serialize;
 use structopt::StructOpt;
 use strum::VariantNames;
 
-use ya_http_proxy_model::{AuthMethod, CreateUser, User, UserEndpointStats};
+use ya_http_proxy_model::{AuthMethod, CreateUser, PubService, User, UserEndpointStats};
 use ya_runtime_sdk::error::Error as SdkError;
 
 use crate::HttpAuth;
@@ -13,6 +13,8 @@ use crate::HttpAuth;
 #[structopt(rename_all = "kebab-case")]
 pub enum RuntimeCommand {
     User(UserCommand),
+    #[structopt(alias = "svc")]
+    Service(ServiceCommand),
 }
 
 impl RuntimeCommand {
@@ -28,6 +30,7 @@ impl RuntimeCommand {
     ) -> Result<RuntimeCommandOutput, SdkError> {
         match self {
             Self::User(cmd) => cmd.execute(service_name, rt).await.map(Into::into),
+            Self::Service(cmd) => cmd.execute(service_name, rt).await.map(Into::into),
         }
     }
 }
@@ -36,6 +39,7 @@ impl RuntimeCommand {
 #[serde(untagged)]
 pub enum RuntimeCommandOutput {
     User(UserCommandOutput),
+    Service(ServiceCommandOutput),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, StructOpt)]
@@ -122,6 +126,40 @@ impl UserCommand {
                     .await?;
 
                 Ok(stats.into())
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, StructOpt)]
+#[structopt(rename_all = "kebab-case")]
+pub enum ServiceCommand {
+    Info {},
+}
+
+#[derive(Clone, Debug, Serialize, From)]
+#[serde(untagged)]
+pub enum ServiceCommandOutput {
+    None,
+    Service(PubService),
+}
+
+impl ServiceCommand {
+    pub async fn execute(
+        self,
+        service_name: String,
+        rt: &mut HttpAuth,
+    ) -> Result<ServiceCommandOutput, SdkError> {
+        match self {
+            Self::Info {} => {
+                let service: PubService = rt
+                    .api
+                    .get_service(&service_name)
+                    .map_err(SdkError::from_string)
+                    .await?
+                    .into();
+
+                Ok(service.into())
             }
         }
     }
