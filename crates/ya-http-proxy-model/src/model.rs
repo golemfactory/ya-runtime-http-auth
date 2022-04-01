@@ -56,13 +56,15 @@ impl From<(CreateService, DateTime<Utc>)> for Service {
 pub struct PubService {
     pub name: String,
     pub server_name: Vec<String>,
+    pub created_at: DateTime<Utc>,
     pub port_https: HashSet<u16>,
     pub port_http: HashSet<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cert_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeouts: Option<Timeouts>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpu_threads: Option<usize>,
-    pub created_at: DateTime<Utc>,
 }
 
 impl From<Service> for PubService {
@@ -71,11 +73,12 @@ impl From<Service> for PubService {
         let port_http = service.inner.http_ports();
 
         Self {
-            created_at: service.created_at,
             name: service.inner.name,
             server_name: service.inner.server_name,
+            created_at: service.created_at,
             port_https,
             port_http,
+            cert_hash: service.inner.cert.as_ref().map(|c| c.hash.clone()),
             timeouts: service.inner.timeouts,
             cpu_threads: service.inner.cpu_threads,
         }
@@ -155,6 +158,8 @@ pub struct CreateServiceUser {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateServiceCert {
+    #[serde(default)]
+    pub hash: String,
     pub path: PathBuf,
     pub key_path: PathBuf,
 }

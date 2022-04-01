@@ -1,11 +1,13 @@
-use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use chrono::{DateTime, Utc};
 use futures::channel::oneshot;
 use futures::FutureExt;
 use hyper::service::{make_service_fn, service_fn};
+use sha3::{Digest, Sha3_256};
 use tokio::sync::RwLock;
 use tokio::task::LocalSet;
 
@@ -151,21 +153,27 @@ impl ProxyManager {
             .map(|n| 1.max(n));
 
         match create.cert {
-            Some(ref cert) => {
+            Some(ref mut cert) => {
                 conf.server.server_cert.server_cert_store_path = Some(cert.path.clone());
                 conf.server.server_cert.server_key_path = Some(cert.key_path.clone());
+                cert.hash = cert_hash(&cert.path)?;
             }
             None => {
                 let path = match conf.server.server_cert.server_cert_store_path {
                     Some(ref path) => path.clone(),
-                    None => return Err(ProxyError::Conf("Missing certificate path".to_string())),
+                    None => return Ok(conf),
                 };
                 let key_path = match conf.server.server_cert.server_key_path {
                     Some(ref path) => path.clone(),
-                    None => return Err(ProxyError::Conf("Missing key path".to_string())),
+                    None => return Ok(conf),
                 };
+                let hash = cert_hash(&path)?;
 
-                create.cert = Some(model::CreateServiceCert { path, key_path });
+                create.cert = Some(model::CreateServiceCert {
+                    hash,
+                    path,
+                    key_path,
+                });
             }
         }
 
@@ -556,5 +564,24 @@ impl ProxyStats {
         } else {
             user_stats.insert(endpoint.to_string(), 1);
         };
+    }
+}
+
+pub(crate) fn cert_hash(path: impl AsRef<Path>) -> Result<String, ProxyError> {
+    match std::fs::read(&path) {
+        Ok(vec) => {
+            let mut digest = Sha3_256::default();
+            digest.update(&vec);
+
+            let digest_str = format!("{:x}", digest.finalize());
+            let prefix = if digest_str.len() % 2 == 1 { "0" } else { "" };
+
+            Ok(format!("sha3:{}{}", prefix, digest_str))
+        }
+        Err(err) => Err(ProxyError::Conf(format!(
+            "Unable to read the certificate file '{}': {}",
+            path.as_ref().display(),
+            err
+        ))),
     }
 }
