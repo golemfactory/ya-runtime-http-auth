@@ -71,24 +71,29 @@ fn sanitize_value(value: &json::Value) -> anyhow::Result<Option<json::Value>> {
 
 pub fn lookup(ctx: &mut Context<HttpAuthRuntime>) -> Option<ServiceConf> {
     let mut paths: Vec<_> = ctx.conf.service_lookup_dirs.clone();
+
+    let port_paths = vec![
+        // parent directory of this binary
+        std::env::current_exe()
+            .ok()
+            .and_then(|path| path.parent().map(|p| p.to_path_buf())),
+        // current working directory
+        std::env::current_dir().ok(),
+    ];
+
+    paths.extend(
+        port_paths
+            .into_iter()
+            .flatten()
+            .map(|path| path.join(SERVICES_SUBDIRECTORY)),
+    );
+
     let local_paths = vec![dirs::data_local_dir(), dirs::config_dir()];
 
     paths.extend(local_paths.into_iter().flatten().map(|path| {
         path.join(env!("CARGO_PKG_NAME"))
             .join(SERVICES_SUBDIRECTORY)
     }));
-
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(path) = exe_path.parent() {
-            let path = path.join(SERVICES_SUBDIRECTORY);
-            paths.push(path);
-        }
-    }
-
-    if let Ok(path) = std::env::current_dir() {
-        let path = path.join(SERVICES_SUBDIRECTORY);
-        paths.push(path);
-    }
 
     find(paths, ctx)
 }
