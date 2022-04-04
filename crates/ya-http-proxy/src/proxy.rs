@@ -135,15 +135,15 @@ impl ProxyManager {
         }
 
         if create.server_name.is_empty() {
-            if conf.server.public_address.is_empty() {
+            if conf.server.server_name.is_empty() {
                 return Err(ProxyError::Conf(
                     "Missing public address information".to_string(),
                 ));
             }
 
-            create.server_name = conf.server.public_address.clone();
+            create.server_name = conf.server.server_name.clone();
         } else {
-            conf.server.public_address = create.server_name.clone();
+            conf.server.server_name = create.server_name.clone();
         }
 
         create.cpu_threads = create
@@ -408,10 +408,20 @@ impl ProxyState {
         create: model::CreateService,
     ) -> Result<&mut ProxyService, ServiceError> {
         let name = create.name.clone();
-        let endpoint = create.from.clone();
+        let mut endpoint = create.from.trim().to_string();
 
-        if self.by_endpoint.contains_key(&endpoint) || self.by_name.contains_key(&name) {
+        if !endpoint.starts_with('/') {
+            endpoint = format!("/{}", endpoint);
+        }
+
+        if self.by_name.contains_key(&name) {
             return Err(ServiceError::AlreadyExists { name, endpoint });
+        }
+
+        for by_endpoint in self.by_endpoint.keys() {
+            if by_endpoint.starts_with(&endpoint) || endpoint.starts_with(by_endpoint) {
+                return Err(ServiceError::AlreadyExists { name, endpoint });
+            }
         }
 
         let service = ProxyService::new(create);
