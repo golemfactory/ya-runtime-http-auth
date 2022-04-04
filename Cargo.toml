@@ -3,6 +3,7 @@ name = "ya-runtime-http-auth"
 description = "HTTP authentication runtime for exposing services on Golem Network"
 version = "0.1.0"
 authors = ["Golem Factory <contact@golem.network>"]
+homepage = "https://github.com/golemfactory/ya-runtime-http-auth"
 repository = "https://github.com/golemfactory/ya-runtime-http-auth"
 edition = "2021"
 license = "GPL-3.0"
@@ -18,8 +19,8 @@ assets = [
 nix = "0.23"
 
 [dependencies]
-#ya-runtime-sdk = { version = "0.2.0", features = ["macros"] }
-ya-runtime-sdk = { git = "https://github.com/golemfactory/ya-runtime-sdk.git", rev = "77784b7c7af1246780e1439a2725147965fe2f85", features = ["macros"]}
+ya-runtime-sdk = { version = "0.2.1", features = ["macros"] }
+# ya-runtime-sdk = { git = "https://github.com/golemfactory/ya-runtime-sdk.git", rev = "77784b7c7af1246780e1439a2725147965fe2f85", features = ["macros"]}
 ya-http-proxy-client = { version = "0.1", path = "crates/ya-http-proxy-client" }
 ya-http-proxy-model = { version = "0.1", path = "crates/ya-http-proxy-model" }
 
