@@ -155,7 +155,7 @@ pub struct CreateServiceUser {
 }
 
 /// Service certificate configuration
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateServiceCert {
     #[serde(default)]
@@ -163,6 +163,14 @@ pub struct CreateServiceCert {
     pub path: PathBuf,
     pub key_path: PathBuf,
 }
+
+impl PartialEq for CreateServiceCert {
+    fn eq(&self, other: &Self) -> bool {
+        self.path == other.path && self.key_path == other.key_path
+    }
+}
+
+impl Eq for CreateServiceCert {}
 
 /// New user descriptor
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

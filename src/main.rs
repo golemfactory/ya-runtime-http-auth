@@ -30,7 +30,7 @@ use crate::command::RuntimeCommand;
 
 type RuntimeCli = <HttpAuthRuntime as RuntimeDef>::Cli;
 
-pub const PROPERTY_PREFIX: &str = "golem.runtime.http-auth.meta";
+pub const PROPERTY_PREFIX: &str = "golem.runtime.http-auth";
 const COUNTER_NAME: &str = "http-auth.requests";
 const COUNTER_PUBLISH_INTERVAL: Duration = Duration::from_secs(2);
 
@@ -272,23 +272,32 @@ impl Runtime for HttpAuthRuntime {
 
         let result = service.offer_properties(PROPERTY_PREFIX);
         let cpu_threads = service.inner.cpu_threads;
+        let https = service.inner.bind_https.is_some() && service.inner.cert.is_some();
 
         async move {
             use anyhow::Context;
 
             let mut output = result?;
-            let object = output
+            let properties = output
                 .as_object_mut()
                 .context("Programming error: offer properties are not a map")?;
 
+            properties.insert(
+                format!("{}.https", PROPERTY_PREFIX),
+                json::Value::Bool(https),
+            );
+
             if let Some(cpu_threads) = cpu_threads {
-                object.insert(
+                properties.insert(
                     format!("{}.cpu-threads", PROPERTY_PREFIX),
                     json::Value::Number(cpu_threads.into()),
                 );
             }
 
-            Ok(Some(output))
+            Ok(Some(serde_json::json!({
+                "properties": properties,
+                "constraints": ""
+            })))
         }
         .boxed_local()
     }
