@@ -43,6 +43,7 @@ structopt = "0.3"
 strum = "0.23"
 thiserror = "1.0"
 tokio = { version = "0.2", features = ["io-std", "io-util", "fs", "rt-core", "rt-threaded", "process", "time"] }
+log4rs = "1.1"
 
 [workspace]
 members = [ "crates/*" ]

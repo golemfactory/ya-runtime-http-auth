@@ -17,6 +17,7 @@ use crate::proxy::stream::HttpStream;
 pub async fn listen_http(
     conf: &ServerConf,
 ) -> Result<Option<Builder<impl Accept<Conn = HttpStream, Error = std::io::Error>>>, Error> {
+    log::error!("SHOW MYSELF d");
     let addrs = match conf.bind_http.as_ref() {
         Some(addrs) => addrs.to_vec(),
         None => return Ok(None),
@@ -105,6 +106,7 @@ pub async fn listen_https(
 }
 
 fn read_tls_conf(conf: &ServerConf) -> Result<Arc<rustls::ServerConfig>, Error> {
+    log::error!("SHOW MYSELF");
     let store = match conf.server_cert.server_cert_store_path.clone() {
         Some(path) => read_cert_store(path)?,
         None => return Err(TlsError::ServerCertStore("path not set".to_string()).into()),

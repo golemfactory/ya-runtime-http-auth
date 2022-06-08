@@ -1,6 +1,3 @@
-#[global_allocator]
-static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
-
 use chrono::{DateTime, Local};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};

@@ -30,6 +30,11 @@ use crate::command::RuntimeCommand;
 
 type RuntimeCli = <HttpAuthRuntime as RuntimeDef>::Cli;
 
+use log::LevelFilter;
+use log4rs::append::file::FileAppender;
+use log4rs::config::{Appender, Config, Root};
+use log4rs::encode::pattern::PatternEncoder;
+
 pub const PROPERTY_PREFIX: &str = "golem.runtime.http-auth";
 const COUNTER_NAME: &str = "http-auth.requests";
 const COUNTER_PUBLISH_INTERVAL: Duration = Duration::from_secs(2);
@@ -153,6 +158,8 @@ impl Env<RuntimeCli> for HttpAuthEnv {
 
 impl Runtime for HttpAuthRuntime {
     fn deploy<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
+        println!("DUPADUPADUPADUADPUADPUADP");
+        log::error!("sdfsdfsdfsdfsdfsdfsdfsdfsdfsdf");
         if config::lookup(ctx).is_none() {
             return SdkError::response("Config file not found");
         }
@@ -176,6 +183,8 @@ impl Runtime for HttpAuthRuntime {
             Some(service) => service,
             None => return SdkError::response("Config file not found"),
         };
+
+        log::info!("Service found {:?}", service);
 
         let data_dir = ctx.conf.data_dir.clone();
         let http_auth = self.http_auth.clone();
@@ -320,6 +329,22 @@ impl Runtime for HttpAuthRuntime {
 }
 
 fn main() -> anyhow::Result<()> {
+    let logfile = FileAppender::builder()
+        .encoder(Box::new(PatternEncoder::new("{d} {l} {t} - {m}{n}")))
+        .build(r#"logs/ya-runtime-http-proxy.log"#)?;
+
+    let config = Config::builder()
+        .appender(Appender::builder().build("logfile", Box::new(logfile)))
+        .build(
+            Root::builder()
+                .appender("logfile")
+                .build(LevelFilter::Debug),
+        )?;
+
+    log4rs::init_config(config)?;
+    log::debug!("Runtime HttpProxy starting - log level debug message ...");
+    log::info!("Runtime HttpProxy starting - log level info message ...");
+
     let runtime =
         ya_runtime_sdk::build::<HttpAuthRuntime, _, _, _>(HttpAuthEnv::default(), move |ctx| {
             let api_url = ctx.conf.management_api_url.clone();

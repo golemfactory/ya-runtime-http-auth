@@ -95,7 +95,13 @@ pub fn lookup(ctx: &mut Context<HttpAuthRuntime>) -> Option<ServiceConf> {
             .join(SERVICES_SUBDIRECTORY)
     }));
 
-    find(paths, ctx)
+    log::error!("Find services: {:?} {:?}", paths, ctx.env.runtime_name().unwrap());
+    let service_conf = find(paths, ctx);
+    if let Some(service_conf) = service_conf.as_ref() {
+        log::error!("Service found: {:?}", service_conf);
+    }
+    service_conf
+
 }
 
 fn find(paths: Vec<PathBuf>, ctx: &mut Context<HttpAuthRuntime>) -> Option<ServiceConf> {
