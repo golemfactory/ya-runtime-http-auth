@@ -158,8 +158,7 @@ impl Env<RuntimeCli> for HttpAuthEnv {
 
 impl Runtime for HttpAuthRuntime {
     fn deploy<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
-        println!("DUPADUPADUPADUADPUADPUADP");
-        log::error!("sdfsdfsdfsdfsdfsdfsdfsdfsdfsdf");
+        log::info!("SCX - started deploying service");
         if config::lookup(ctx).is_none() {
             return SdkError::response("Config file not found");
         }
@@ -175,6 +174,7 @@ impl Runtime for HttpAuthRuntime {
     }
 
     fn start<'a>(&mut self, ctx: &mut Context<Self>) -> OutputResponse<'a> {
+        log::info!("SCX - started service");
         let emitter = match ctx.emitter.clone() {
             Some(emitter) => emitter,
             None => return SdkError::response("Not running in server mode"),

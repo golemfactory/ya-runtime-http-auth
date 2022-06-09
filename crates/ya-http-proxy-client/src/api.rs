@@ -20,15 +20,18 @@ impl ManagementApi {
     }
 
     pub async fn create_service(&self, cs: &CreateService) -> Result<Service> {
+        log::info!("Create service");
         self.client.post("services", cs).await
     }
 
     pub async fn get_service(&self, service_name: &str) -> Result<Service> {
+        log::info!("Get service");
         let url = format!("services/{}", service_name);
         self.client.get(&url).await
     }
 
     pub async fn delete_service(&self, service_name: &str) -> Result<()> {
+        log::info!("Delete service");
         let url = format!("services/{}", service_name);
         self.client.delete(&url).await
     }
@@ -36,21 +39,25 @@ impl ManagementApi {
     // User management per service
 
     pub async fn get_users(&self, service_name: &str) -> Result<Vec<User>> {
+        log::info!("Get users");
         let url = format!("services/{}/users", service_name);
         self.client.get(&url).await
     }
 
     pub async fn create_user(&self, service_name: &str, cu: &CreateUser) -> Result<User> {
+        log::info!("Create user");
         let url = format!("services/{}/users", service_name);
         self.client.post(&url, cu).await
     }
 
     pub async fn get_user(&self, service_name: &str, username: &str) -> Result<User> {
+        log::info!("Get user");
         let url = format!("services/{}/users/{}", service_name, username);
         self.client.get(&url).await
     }
 
     pub async fn delete_user(&self, service_name: &str, username: &str) -> Result<()> {
+        log::info!("Delete user");
         let url = format!("services/{}/users/{}", service_name, username);
         self.client.delete(&url).await
     }
