@@ -10,6 +10,8 @@ use tokio::sync::RwLock;
 
 use crate::proxy::{ProxyState, ProxyStats};
 
+const EMPTY_STR: &str = "";
+
 #[inline(always)]
 pub async fn forward_req(
     mut req: Request<Body>,
@@ -17,7 +19,7 @@ pub async fn forward_req(
     proxy_stats: Arc<RwLock<ProxyStats>>,
     client: Client<HttpConnector>,
     address: SocketAddr,
-) -> hyper::Result<hyper::Response<hyper::Body>> {
+) -> hyper::Result<Response<Body>> {
     let path = req.uri().path();
     let headers = req.headers();
     let state = proxy_state.read().await;
@@ -43,6 +45,7 @@ pub async fn forward_req(
         return response(StatusCode::UNAUTHORIZED);
     }
 
+    let proxy_from = service.created_with.from.clone();
     let proxy_to = service.created_with.to.clone();
     drop(state);
 
@@ -79,7 +82,7 @@ pub async fn forward_req(
         headers.insert(HeaderName::from_static("x-forwarded-host"), host);
     }
 
-    if let Err(e) = merge_path_and_query(req.uri_mut(), proxy_to) {
+    if let Err(e) = merge_path_and_query(req.uri_mut(), proxy_from, proxy_to) {
         log::warn!("Forwarded path error: {}", e);
         return response(StatusCode::INTERNAL_SERVER_ERROR);
     }
@@ -87,40 +90,71 @@ pub async fn forward_req(
 }
 
 #[inline]
-fn response(code: StatusCode) -> hyper::Result<hyper::Response<hyper::Body>> {
+fn response(code: StatusCode) -> hyper::Result<Response<Body>> {
     let mut builder = Response::builder().status(code);
 
     if code == StatusCode::UNAUTHORIZED {
         builder = builder.header(header::WWW_AUTHENTICATE, "Basic realm=\"Service access\"");
     }
-    Ok(builder.body(hyper::Body::empty()).unwrap())
+    Ok(builder.body(Body::empty()).unwrap())
 }
 
 #[inline]
-fn merge_path_and_query(req_uri: &mut Uri, proxy_to: Uri) -> Result<(), String> {
+fn merge_path_and_query(req_uri: &mut Uri, proxy_from: Uri, proxy_to: Uri) -> Result<(), String> {
+    let from_parts = proxy_from.into_parts();
     let mut to_parts = proxy_to.into_parts();
 
-    let to_paq = to_parts.path_and_query.as_ref();
     let req_paq = req_uri.path_and_query();
+    let from_paq = from_parts.path_and_query.as_ref();
+    let to_paq = to_parts.path_and_query.as_ref();
 
-    match (to_paq, req_paq) {
-        (Some(_), Some(req)) if req == "/" => (),
-        (None, Some(req)) => {
-            to_parts.path_and_query.replace(req.clone());
+    let req_str = extract_req(&req_paq);
+    let from_str = extract_from(&from_paq);
+
+    let f = from_str.len();
+    let f = if &req_str[..f] == from_str { f } else { 0 };
+    let req_str = &req_str[f..];
+
+    let paq = if let Some(to) = to_paq {
+        let merge = [to.as_str(), req_str].concat();
+        let len = merge.len();
+        if len > 1 && &merge[len - 2..] == "//" {
+            PathAndQuery::try_from(&merge[..len - 1])
+        } else {
+            PathAndQuery::try_from(merge)
         }
-        (Some(to), Some(req)) if to == "/" => {
-            to_parts.path_and_query.replace(req.clone());
-        }
-        (Some(to), Some(req)) => {
-            let paq =
-                PathAndQuery::try_from(format!("{}{}", to, req)).map_err(|e| e.to_string())?;
-            to_parts.path_and_query.replace(paq);
-        }
-        _ => (),
+    } else {
+        PathAndQuery::try_from(req_str)
     }
+    .map_err(|e| e.to_string())?;
 
+    to_parts.path_and_query.replace(paq);
     *req_uri = Uri::from_parts(to_parts).map_err(|e| e.to_string())?;
+
     Ok(())
+}
+
+#[inline]
+fn extract_req<'a>(paq: &'a Option<&PathAndQuery>) -> &'a str {
+    match paq.map(|p| p.as_str()) {
+        None | Some("") => "/",
+        Some(s) => s,
+    }
+}
+
+#[inline]
+fn extract_from<'a>(paq: &'a Option<&PathAndQuery>) -> &'a str {
+    match paq.map(|p| p.as_str()) {
+        None | Some("") | Some("/") => EMPTY_STR,
+        Some(s) => {
+            let e = s.len() - 1;
+            if &s[e..] == "/" {
+                &s[..e]
+            } else {
+                s
+            }
+        }
+    }
 }
 
 #[inline]
@@ -159,33 +193,69 @@ mod tests {
 
     #[test]
     fn merge_uri_paths() -> anyhow::Result<()> {
-        let verify = |against: Uri, uri: &str, expected: &str| {
+        let verify = |from: &Uri, to: &Uri, uri: &str, expected: &str| {
             let mut req_uri = Uri::try_from(uri).unwrap();
-            merge_path_and_query(&mut req_uri, against).unwrap();
-            assert_eq!(&req_uri.to_string(), expected);
+            let expected_uri = Uri::try_from(expected).unwrap();
+
+            merge_path_and_query(&mut req_uri, from.clone(), to.clone()).unwrap();
+
+            println!("from {from} to {to} | {req_uri} vs {expected}");
+            assert_eq!(req_uri, expected_uri);
+            println!("-- ok");
         };
 
-        let proxy_to = Uri::try_from("http://127.0.0.1").unwrap();
-        verify(proxy_to.clone(), "http://1.0.0.1", "http://127.0.0.1/");
-        verify(proxy_to.clone(), "http://1.0.0.1/", "http://127.0.0.1/");
+        let from = Uri::from_static("/");
+        let to = Uri::try_from("http://127.0.0.1").unwrap();
+        verify(&from, &to, "http://1.0.0.1", "http://127.0.0.1/");
+        verify(&from, &to, "http://1.0.0.1/", "http://127.0.0.1/");
 
-        let proxy_to = Uri::try_from("http://127.0.0.1/").unwrap();
-        verify(proxy_to.clone(), "http://1.0.0.1", "http://127.0.0.1/");
-        verify(proxy_to.clone(), "http://1.0.0.1/", "http://127.0.0.1/");
+        let from = Uri::from_static("/");
+        let to = Uri::try_from("http://127.0.0.1/to").unwrap();
+        verify(&from, &to, "http://1.0.0.1", "http://127.0.0.1/to/");
+        verify(&from, &to, "http://1.0.0.1/", "http://127.0.0.1/to/");
 
-        let proxy_to = Uri::try_from("http://127.0.0.1/to").unwrap();
-        verify(proxy_to.clone(), "http://1.0.0.1", "http://127.0.0.1/to");
-        verify(proxy_to.clone(), "http://1.0.0.1/", "http://127.0.0.1/to");
+        let from = Uri::from_static("/");
+        let to = Uri::try_from("http://127.0.0.1/to/").unwrap();
+        verify(&from, &to, "http://1.0.0.1", "http://127.0.0.1/to/");
+        verify(&from, &to, "http://1.0.0.1/", "http://127.0.0.1/to/");
 
-        let proxy_to = Uri::try_from("http://127.0.0.1/to").unwrap();
+        let from = Uri::from_static("/sub");
+        let to = Uri::try_from("http://127.0.0.1/").unwrap();
+        verify(&from, &to, "http://1.0.0.1/sub", "http://127.0.0.1/");
+        verify(&from, &to, "http://1.0.0.1/sub/", "http://127.0.0.1/");
+
+        let from = Uri::from_static("/sub/2");
+        let to = Uri::try_from("http://127.0.0.1/to").unwrap();
+        verify(&from, &to, "http://1.0.0.1/sub/2", "http://127.0.0.1/to");
+        verify(&from, &to, "http://1.0.0.1/sub/2/", "http://127.0.0.1/to/");
+
+        let from = Uri::from_static("/");
+        let to = Uri::try_from("http://127.0.0.1/to").unwrap();
         verify(
-            proxy_to.clone(),
+            &from,
+            &to,
             "http://1.0.0.1/resource",
             "http://127.0.0.1/to/resource",
         );
         verify(
-            proxy_to.clone(),
+            &from,
+            &to,
             "http://1.0.0.1/resource/",
+            "http://127.0.0.1/to/resource/",
+        );
+
+        let from = Uri::from_static("/sub/2");
+        let to = Uri::try_from("http://127.0.0.1/to").unwrap();
+        verify(
+            &from,
+            &to,
+            "http://1.0.0.1/sub/2/resource",
+            "http://127.0.0.1/to/resource",
+        );
+        verify(
+            &from,
+            &to,
+            "http://1.0.0.1/sub/2/resource/",
             "http://127.0.0.1/to/resource/",
         );
 

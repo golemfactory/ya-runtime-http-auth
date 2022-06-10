@@ -41,7 +41,7 @@ impl ServiceConf {
                 .replace("--", "-")
                 .replace("..", ".");
             let trimmed = post_dedup.trim_end_matches('.');
-            map.insert(format!("{}.{}", prefix, trimmed), value);
+            map.insert([prefix, ".", trimmed].concat(), value);
         }
 
         Ok(json::Value::Object(map))

@@ -322,18 +322,14 @@ impl Proxy {
         Ok(S::from((service.created_with.clone(), service.created_at)))
     }
 
-    pub async fn add<S>(&self, mut create: model::CreateService) -> Result<S, Error>
+    pub async fn add<S>(&self, create: model::CreateService) -> Result<S, Error>
     where
         S: From<(model::CreateService, DateTime<Utc>)>,
     {
-        if create.from.trim().is_empty() {
-            create.from = "/".to_string()
-        }
-
         let mut state = self.state.write().await;
         let service = state.add_service(create)?;
         let model = S::from((service.created_with.clone(), service.created_at));
-        let endpoint = service.created_with.from.clone();
+        let endpoint = service.created_with.from.path().to_string();
         drop(state);
 
         let mut stats = self.stats.write().await;
@@ -408,10 +404,10 @@ impl ProxyState {
         create: model::CreateService,
     ) -> Result<&mut ProxyService, ServiceError> {
         let name = create.name.clone();
-        let mut endpoint = create.from.trim().to_string();
+        let mut endpoint = create.from.path().to_string();
 
         if !endpoint.starts_with('/') {
-            endpoint = format!("/{}", endpoint);
+            endpoint = ["/", endpoint.as_str()].concat();
         }
 
         if self.by_name.contains_key(&name) {
