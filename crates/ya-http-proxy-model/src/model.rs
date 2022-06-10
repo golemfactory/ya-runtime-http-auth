@@ -105,7 +105,8 @@ pub struct CreateService {
     /// Authorization options
     pub auth: Option<Auth>,
     /// Source endpoint (e.g. `/resource`)
-    pub from: String,
+    #[serde(with = "deser::uri")]
+    pub from: Uri,
     /// Destination URL (e.g. `http://127.0.0.1:8080`)
     #[serde(with = "deser::uri")]
     pub to: Uri,

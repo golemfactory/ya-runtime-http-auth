@@ -152,7 +152,7 @@ async fn e2e_requests(client: WebClient) -> anyhow::Result<()> {
         auth: Some(model::Auth {
             method: model::AuthMethod::Basic,
         }),
-        from: service_endpoint,
+        from: service_endpoint.parse()?,
         to: fwd_service_url.parse()?,
         timeouts: None,
         user: None,
