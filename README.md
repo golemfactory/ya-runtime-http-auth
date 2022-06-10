@@ -228,6 +228,8 @@ The client should ignore the missing Certificate Authority signature and the dom
 
 ### Creating a self-signed certificate with OpenSSL
 
+Currently application do not support keys encrypted with des. Use nodes options to generate unecrypted private key.
+
 ```bash
-openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.cert -sha256 -days 3650
+openssl req -nodes -x509 -newkey rsa:4096 -keyout server.key -out server.cert -sha256 -days 3650
 ```
