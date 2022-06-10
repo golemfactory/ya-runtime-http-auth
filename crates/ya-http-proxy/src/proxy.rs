@@ -52,6 +52,7 @@ impl ProxyManager {
     }
 
     async fn spawn(&self, create: &mut model::CreateService) -> Result<Proxy, Error> {
+        log::info!("Proxy manager spawn");
         let mut services = self.proxies.write().await;
         let addrs = create.addresses();
 

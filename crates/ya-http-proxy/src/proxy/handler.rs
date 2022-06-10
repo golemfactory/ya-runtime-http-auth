@@ -22,6 +22,7 @@ pub async fn forward_req(
     let headers = req.headers();
     let state = proxy_state.read().await;
 
+    log::error!("forward error error1: {}", address);
     // Check whether the service is registered
     let service = match state
         .by_endpoint
@@ -32,6 +33,7 @@ pub async fn forward_req(
         None => return response(StatusCode::NOT_FOUND),
     };
 
+    log::error!("forward error auth: {}", address);
     // TODO: consider reading credentials from URL
     // Extract credentials from header
     let auth = match extract_basic_auth(headers) {
@@ -46,6 +48,7 @@ pub async fn forward_req(
     let proxy_to = service.created_with.to.clone();
     drop(state);
 
+    log::error!("forward error decode base64: {}", address);
     // Decode credentials
     let decoded_auth = match decode_base64(auth) {
         Ok(decoded_auth) => decoded_auth,
@@ -59,13 +62,14 @@ pub async fn forward_req(
     // Domain name
     let host = extract_host(headers);
 
+    log::error!("forward error decode base64: {:?}", host);
     // Update request stats
     {
         let mut stats = proxy_stats.write().await;
         stats.inc(path, username);
     }
 
-    log::debug!("[{}] {} -> {}", username, path, proxy_to);
+    log::info!("[{}] {} -> {}", username, path, proxy_to);
 
     // Write proxy headers
     let headers = req.headers_mut();
@@ -78,12 +82,17 @@ pub async fn forward_req(
     if let Some(host) = host {
         headers.insert(HeaderName::from_static("x-forwarded-host"), host);
     }
+    log::error!("forward error decode headers: {:?}", headers);
 
     if let Err(e) = merge_path_and_query(req.uri_mut(), proxy_to) {
         log::warn!("Forwarded path error: {}", e);
         return response(StatusCode::INTERNAL_SERVER_ERROR);
     }
-    client.request(req).await
+    log::error!("Sending request: {:?}", req);
+    let resp = client.request(req).await;
+    log::error!("Got request: {:?}", resp);
+    resp
+
 }
 
 #[inline]

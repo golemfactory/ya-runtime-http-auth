@@ -58,6 +58,8 @@ pub async fn listen_http(
 pub async fn listen_https(
     conf: &ServerConf,
 ) -> Result<Option<Builder<impl Accept<Conn = HttpStream, Error = std::io::Error>>>, Error> {
+    log::info!("listen_https");
+
     let addrs = match conf.bind_https.as_ref() {
         Some(addrs) => addrs.to_vec(),
         None => return Ok(None),
