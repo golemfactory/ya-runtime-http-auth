@@ -14,7 +14,7 @@ const SLEEP: Duration = Duration::from_millis(500);
 
 pub async fn spawn(api: ManagementApi, data_dir: PathBuf) -> anyhow::Result<()> {
     let started = Instant::now();
-    let lock_path = with_lock_ext(data_dir.join(env!("CARGO_PKG_NAME")));
+    let lock_path = with_lock_ext("/tmp/proxy.lock");
     let mut lock = LockFile::new(&lock_path);
     let mut state = ProxyState::Unknown;
 

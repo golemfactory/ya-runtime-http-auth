@@ -92,7 +92,6 @@ pub async fn forward_req(
     let resp = client.request(req).await;
     log::error!("Got request: {:?}", resp);
     resp
-
 }
 
 #[inline]
