@@ -231,3 +231,4 @@ The client should ignore the missing Certificate Authority signature and the dom
 ```bash
 openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.cert -sha256 -days 3650
 ```
+ 
