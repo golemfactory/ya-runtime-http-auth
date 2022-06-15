@@ -72,3 +72,18 @@ impl Display for Addresses {
         write!(f, "]")
     }
 }
+
+impl Addresses {
+    pub fn gather_and_sort_addresses(
+        addresses1: Option<Addresses>,
+        addresses2: Option<Addresses>,
+    ) -> Addresses {
+        let mut addrs = addresses1.unwrap_or_default();
+        if let Some(addresses2) = addresses2 {
+            addrs.0.extend(addresses2.0);
+        }
+        addrs.0.sort();
+        addrs.0.dedup();
+        addrs
+    }
+}
