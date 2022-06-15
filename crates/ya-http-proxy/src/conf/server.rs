@@ -62,11 +62,10 @@ pub struct ServerConf {
 
 impl ServerConf {
     pub fn addresses(&self) -> Addresses {
-        let mut addrs = self.bind_https.clone().unwrap_or_default();
-        if let Some(a) = self.bind_http.clone() {
-            addrs.0.extend(a.0);
-        }
-        addrs
+        //make sure the function returns the same result as CreateService::addresses
+        //otherwise services will be recreated resulting an error
+
+        Addresses::gather_and_sort_addresses(self.bind_http.clone(), self.bind_https.clone())
     }
 }
 

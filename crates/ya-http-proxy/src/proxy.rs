@@ -42,6 +42,8 @@ impl ProxyManager {
         let instances = self.proxies.write().await;
         let addrs = create.addresses();
 
+        log::info!("Addresses get {:?}", addrs);
+        log::info!("Instances contains {:?}", instances.keys());
         match instances.get(&addrs) {
             Some(proxy) => Ok(proxy.clone()),
             None => {
