@@ -56,8 +56,8 @@ structopt = { version = "0.3", optional = true }
 
 [dev-dependencies]
 anyhow = { version = "1" }
-awc = { version = "3.0.0-beta.19", features = ["openssl"] }
-actix-web = { version = "4.0.0-beta.19" }
+awc = { version = "3.0", features = ["openssl"] }
+actix-web = { version = "4.1" }
 actix-rt = { version = "2.6" }
 env_logger = { version = "0.9" }
 structopt = { version = "0.3" }
