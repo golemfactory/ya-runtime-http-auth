@@ -41,6 +41,9 @@ impl ProxyManager {
     pub async fn get_or_spawn(&self, create: &mut model::CreateService) -> Result<Proxy, Error> {
         let instances = self.proxies.write().await;
         let addrs = create.addresses();
+        log::info!("Addresses get {:?}", addrs);
+        log::info!("Instances contains {:?}", instances.keys());
+        log::info!("create: {:?}", create);
 
         log::info!("Addresses get {:?}", addrs);
         log::info!("Instances contains {:?}", instances.keys());
@@ -65,6 +68,7 @@ impl ProxyManager {
         let conf = self.conf_update(create)?;
         let name = create.name.clone();
         let addrs = conf.server.addresses();
+        log::info!("Conf.server: {:?}", conf.server);
         let proxy_addrs = addrs.clone();
         let cpu_threads = create.cpu_threads;
 
@@ -113,6 +117,7 @@ impl ProxyManager {
         match rx.await {
             Ok(result) => {
                 if let Ok(ref proxy) = result {
+                    log::info!("Addresses insert {:?}", proxy_addrs);
                     services.insert(proxy_addrs, proxy.clone());
                 }
                 result
