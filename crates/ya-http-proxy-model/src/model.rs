@@ -121,11 +121,10 @@ pub struct CreateService {
 
 impl CreateService {
     pub fn addresses(&self) -> Addresses {
-        let addrs = self.bind_https.clone().unwrap_or_default();
-        match self.bind_http.clone() {
-            Some(a) => addrs + a,
-            _ => addrs,
-        }
+        //make sure the function returns the same result as ServerConf::addresses
+        //otherwise services will be recreated resulting an error
+
+        Addresses::gather_and_sort_addresses(self.bind_http.clone(), self.bind_https.clone())
     }
 
     pub fn https_ports(&self) -> HashSet<u16> {
