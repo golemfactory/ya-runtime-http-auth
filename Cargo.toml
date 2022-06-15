@@ -18,6 +18,10 @@ assets = [
 [target.'cfg(target_family = "unix")'.dependencies]
 nix = "0.23"
 
+[[bin]]
+name = "ya-runtime-http-auth"
+path = "src/main.rs"
+
 [dependencies]
 ya-runtime-sdk = { version = "0.2.1", features = ["macros"] }
 # ya-runtime-sdk = { git = "https://github.com/golemfactory/ya-runtime-sdk.git", rev = "77784b7c7af1246780e1439a2725147965fe2f85", features = ["macros"]}
