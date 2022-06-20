@@ -100,7 +100,7 @@ fn spawn_detached_command(mut command: Command) -> anyhow::Result<()> {
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
 
         command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
-        let child = command.spawn()?;
+        let _child = command.spawn()?;
     }
     #[cfg(unix)]
     {
