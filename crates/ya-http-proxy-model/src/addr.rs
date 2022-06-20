@@ -1,6 +1,7 @@
+use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
-use std::ops::Add;
+use std::ops::{Add, AddAssign};
 
 use serde::{de, Deserialize, Serialize};
 
@@ -8,9 +9,23 @@ use crate::deser::one_or_many::OneOrManyVisitor;
 
 /// Socket address collection wrapper
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Serialize)]
-pub struct Addresses(pub Vec<SocketAddr>);
+pub struct Addresses(Vec<SocketAddr>);
 
 impl Addresses {
+    pub fn new(addrs: Vec<SocketAddr>) -> Self {
+        Addresses::default() + addrs
+    }
+
+    pub fn ports(&self) -> HashSet<u16> {
+        self.0.iter().map(|a| a.port()).collect()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    #[inline]
     pub fn to_vec(&self) -> Vec<SocketAddr> {
         self.0.clone()
     }
@@ -21,28 +36,31 @@ impl<'de> Deserialize<'de> for Addresses {
     where
         D: de::Deserializer<'de>,
     {
-        let mut addrs: Vec<SocketAddr> =
-            deserializer.deserialize_any(OneOrManyVisitor::<SocketAddr>::default())?;
-
+        let addrs = Addresses::new(
+            deserializer.deserialize_any(OneOrManyVisitor::<SocketAddr>::default())?,
+        );
         if addrs.is_empty() {
             return Err(de::Error::custom("empty sequence"));
         }
-
-        addrs.sort();
-        addrs.dedup();
-
-        Ok(Addresses(addrs.into_iter().collect()))
+        Ok(addrs)
     }
 }
 
-impl Add for Addresses {
+impl<I: IntoIterator<Item = SocketAddr>> Add<I> for Addresses {
     type Output = Self;
 
-    fn add(mut self, rhs: Self) -> Self {
-        self.0.extend(rhs.0);
+    #[inline]
+    fn add(mut self, rhs: I) -> Self::Output {
+        self.add_assign(rhs);
+        self
+    }
+}
+
+impl<I: IntoIterator<Item = SocketAddr>> AddAssign<I> for Addresses {
+    fn add_assign(&mut self, rhs: I) {
+        self.0.extend(rhs);
         self.0.sort();
         self.0.dedup();
-        self
     }
 }
 
@@ -53,10 +71,12 @@ impl From<SocketAddr> for Addresses {
     }
 }
 
-impl From<Vec<SocketAddr>> for Addresses {
-    #[inline]
-    fn from(vec: Vec<SocketAddr>) -> Self {
-        Self(vec)
+impl IntoIterator for Addresses {
+    type Item = SocketAddr;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 
@@ -70,20 +90,5 @@ impl Display for Addresses {
             addr.fmt(f)?;
         }
         write!(f, "]")
-    }
-}
-
-impl Addresses {
-    pub fn gather_and_sort_addresses(
-        addresses1: Option<Addresses>,
-        addresses2: Option<Addresses>,
-    ) -> Addresses {
-        let mut addrs = addresses1.unwrap_or_default();
-        if let Some(addresses2) = addresses2 {
-            addrs.0.extend(addresses2.0);
-        }
-        addrs.0.sort();
-        addrs.0.dedup();
-        addrs
     }
 }

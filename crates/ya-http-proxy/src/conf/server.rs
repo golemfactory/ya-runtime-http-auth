@@ -62,10 +62,7 @@ pub struct ServerConf {
 
 impl ServerConf {
     pub fn addresses(&self) -> Addresses {
-        //make sure the function returns the same result as CreateService::addresses
-        //otherwise services will be recreated resulting an error
-
-        Addresses::gather_and_sort_addresses(self.bind_http.clone(), self.bind_https.clone())
+        self.bind_https.clone().unwrap_or_default() + self.bind_http.clone().unwrap_or_default()
     }
 }
 
