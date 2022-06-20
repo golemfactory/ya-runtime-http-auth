@@ -121,10 +121,7 @@ pub struct CreateService {
 
 impl CreateService {
     pub fn addresses(&self) -> Addresses {
-        //make sure the function returns the same result as ServerConf::addresses
-        //otherwise services will be recreated resulting an error
-
-        Addresses::gather_and_sort_addresses(self.bind_http.clone(), self.bind_https.clone())
+        self.bind_https.clone().unwrap_or_default() + self.bind_http.clone().unwrap_or_default()
     }
 
     pub fn https_ports(&self) -> HashSet<u16> {
@@ -137,7 +134,7 @@ impl CreateService {
 
     fn ports(bind: &Option<Addresses>) -> HashSet<u16> {
         match bind {
-            Some(addrs) => addrs.0.iter().map(|a| a.port()).collect(),
+            Some(addrs) => addrs.ports(),
             None => Default::default(),
         }
     }
