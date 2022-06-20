@@ -9,6 +9,7 @@ license = "GPL-3.0"
 
 [features]
 default = []
+tests-e2e = []
 bin = [
     "anyhow",
     "dotenv",
@@ -16,7 +17,6 @@ bin = [
     "jemallocator",
     "structopt",
 ]
-tests-e2e = []
 
 [[bin]]
 name = "ya-http-proxy"
@@ -51,8 +51,10 @@ toml = { version = "0.5" }
 anyhow = { version = "1", optional = true }
 dotenv = { version = "0.15", optional = true }
 flexi_logger = { version = "0.22", optional = true }
-jemallocator = { version = "0.3", optional = true }
 structopt = { version = "0.3", optional = true }
+
+[target.'cfg(unix)'.dependencies]
+jemallocator = { version = "0.3", optional = true }
 
 [dev-dependencies]
 anyhow = { version = "1" }
