@@ -112,7 +112,7 @@ jobs:
           cp conf/ya-runtime-http-auth.json "$TARGET_DIR/"
           (cd releases && tar czvf "ya-runtime-http-auth-${OS_NAME}-${TAG_NAME}.tar.gz" "ya-runtime-http-auth-${OS_NAME}-${TAG_NAME}")
 
-          echo "::set-output name=artifact::ya-runtime-http-auth-${OS_NAME}-${TAG_NAME}.tar.gz"
+          echo "::set-output name=artifact::ya-runtime-http-auth-arm-${TAG_NAME}.tar.gz"
           echo "::set-output name=media::application/tar+gzip"
 
       - name: Upload
