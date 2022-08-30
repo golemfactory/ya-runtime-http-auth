@@ -206,7 +206,7 @@ jobs:
           asset_path: ${{ steps.deb.outputs.path }}
           asset_name: ${{ steps.deb.outputs.name }}
           asset_content_type: application/vnd.debian.binary-package
-  build:
+  build-arm:
     name: Build ARM Release
     needs:
       - create-release
