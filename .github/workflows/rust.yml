@@ -28,8 +28,6 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          target: aarch64-unknown-linux-musl
-          override: true
 
       - name: Cache cargo registry
         uses: actions/cache@v1
