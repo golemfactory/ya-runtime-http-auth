@@ -1,0 +1,1 @@
+cargo run -p ya-http-proxy --features="bin" -- --log-dir=log -m 127.0.0.1:7777
