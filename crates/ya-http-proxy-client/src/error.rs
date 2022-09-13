@@ -1,4 +1,3 @@
-use actix_http::ResponseError;
 use awc::error::{PayloadError, SendRequestError};
 use http::uri::InvalidUri;
 use http::{Method, StatusCode};
@@ -31,7 +30,8 @@ impl From<PayloadError> for Error {
 impl Error {
     pub(crate) fn from_request(err: SendRequestError, method: Method, url: String) -> Self {
         let msg = err.to_string();
-        let code = err.status_code();
+        //todo fix error
+        let code = StatusCode::from_u16(500).unwrap();
         Error::SendRequestError {
             code,
             msg,

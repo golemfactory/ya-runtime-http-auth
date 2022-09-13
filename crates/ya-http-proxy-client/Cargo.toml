@@ -11,9 +11,9 @@ license = "GPL-3.0"
 [dependencies]
 ya-http-proxy-model = { version = "0.1", path = "../ya-http-proxy-model"}
 
-actix-http = {version = "1" }
+actix-http = {version = "3.2" }
 anyhow = { version = "1" }
-awc = { version = "1" }
+awc = { version = "3.0" }
 chrono = { version = "0.4", features = ["serde"] }
 http = { version = "0.2" }
 serde = { version = "1", features = ["derive"] }
