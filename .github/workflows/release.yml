@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Create Release
-        uses: actions/github-script@v3.0
+        uses: actions/github-script@v6
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
@@ -42,24 +42,37 @@ jobs:
             }
 
   build:
-    name: Build Release
+    name: Build Release ${{ matrix.cpu }} ${{ matrix.os }}
     needs:
       - create-release
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.build-on }}
+    strategy:
+      matrix:
+        include:
+          - cpu: x86_64
+            os: win
+            target: x86_64-pc-windows-msvc
+            build-on: windows-latest
+            use-cross: false
+          - cpu: x86_64
+            os: linux
+            target: x86_64-unknown-linux-musl
+            build-on: ubuntu-latest
+            use-cross: true
+          - cpu: aarch64
+            os: linux
+            target: aarch64-unknown-linux-musl
+            build-on: ubuntu-latest
+            use-cross: true
     env:
       OPENSSL_STATIC: 1
     steps:
       - uses: actions/checkout@v1
         with:
           lfs: true
-
-      - name: Install Musl
-        run: |
-          sudo apt-get install -y musl-tools musl
-
       - name: Get upload url
         id: release_upload_url
-        uses: actions/github-script@0.9.0
+        uses: actions/github-script@v6
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           result-encoding: string
@@ -76,37 +89,51 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          target: x86_64-unknown-linux-musl
+          target: ${{ matrix.target }}
           override: true
 
       - name: Build proxy
-        run: |
-          cargo build -p ya-http-proxy --features bin --release --target x86_64-unknown-linux-musl
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: ${{ matrix.use-cross }}
+          command: build
+          args: --target ${{ matrix.target }} -p ya-http-proxy --features bin --release
       - name: Build runtime
-        run: |
-          cargo build --release --target x86_64-unknown-linux-musl
-
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: ${{ matrix.use-cross }}
+          command: build
+          args: --target ${{ matrix.target }} --release
       - name: Pack
         id: pack
         shell: bash
         env:
           GITHUB_REF: ${{ github.ref }}
-          OS_NAME: linux
+          OS_NAME: ${{ matrix.os }}
+          CPU_NAME: ${{ matrix.cpu }}
+          TARGET_NAME: ${{ matrix.target }}
         run: |
+          if [ "$OS_NAME" == "win" ]; then
+            EXE=.exe
+          else
+            EXE=
+          fi
           TAG_NAME="${GITHUB_REF##*/}"
-          TARGET_DIR=releases/ya-runtime-http-auth-linux-${TAG_NAME}
+          TARGET_DIR=releases/ya-runtime-http-auth-${CPU_NAME}-${OS_NAME}-${TAG_NAME}
 
           mkdir -p "$TARGET_DIR/ya-runtime-http-auth"
-          strip "target/x86_64-unknown-linux-musl/release/ya-runtime-http-auth"
-          strip "target/x86_64-unknown-linux-musl/release/ya-http-proxy"
+          if [ "$CPU_NAME" == "x86_64" ]; then
+            strip "target/${TARGET_NAME}/release/ya-runtime-http-auth${EXE}"
+            strip "target/${TARGET_NAME}/release/ya-http-proxy${EXE}"
+          fi
 
           set -x
-          cp target/x86_64-unknown-linux-musl/release/ya-runtime-http-auth "$TARGET_DIR/ya-runtime-http-auth/"
-          cp target/x86_64-unknown-linux-musl/release/ya-http-proxy "$TARGET_DIR/ya-runtime-http-auth/"
+          cp target/${TARGET_NAME}/release/ya-runtime-http-auth${EXE} "$TARGET_DIR/ya-runtime-http-auth/"
+          cp target/${TARGET_NAME}/release/ya-http-proxy${EXE} "$TARGET_DIR/ya-runtime-http-auth/"
           cp conf/ya-runtime-http-auth.json "$TARGET_DIR/"
-          (cd releases && tar czvf "ya-runtime-http-auth-${OS_NAME}-${TAG_NAME}.tar.gz" "ya-runtime-http-auth-${OS_NAME}-${TAG_NAME}")
+          (cd releases && tar czvf "ya-runtime-http-auth-${CPU_NAME}-${OS_NAME}-${TAG_NAME}.tar.gz" "ya-runtime-http-auth-${CPU_NAME}-${OS_NAME}-${TAG_NAME}")
 
-          echo "::set-output name=artifact::ya-runtime-http-auth-${OS_NAME}-${TAG_NAME}.tar.gz"
+          echo "::set-output name=artifact::ya-runtime-http-auth-${CPU_NAME}-${OS_NAME}-${TAG_NAME}.tar.gz"
           echo "::set-output name=media::application/tar+gzip"
 
       - name: Upload
@@ -135,7 +162,7 @@ jobs:
 
       - name: Get upload url
         id: release_upload_url
-        uses: actions/github-script@0.9.0
+        uses: actions/github-script@v6
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           result-encoding: string
