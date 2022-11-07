@@ -1,7 +1,7 @@
 [package]
 name = "ya-http-proxy"
 description = "HTTP proxy component for the HTTP authentication runtime"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Golem Factory <contact@golem.network>"]
 repository = "https://github.com/golemfactory/ya-runtime-http-auth"
 edition = "2021"
