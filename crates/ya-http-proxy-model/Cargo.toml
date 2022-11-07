@@ -4,7 +4,7 @@ description = "HTTP authentication runtime and ya-http-proxy data model"
 authors = ["Golem Factory <contact@golem.network>"]
 homepage = "https://github.com/golemfactory/ya-runtime-http-auth"
 repository = "https://github.com/golemfactory/ya-runtime-http-auth"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "GPL-3.0"
 
