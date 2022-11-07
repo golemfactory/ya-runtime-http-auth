@@ -100,7 +100,7 @@ mod default {
 #[macro_export]
 macro_rules! conf_builder_server {
     ($dst:ident, $src:ident) => {{
-        crate::conf_builder!(
+        $crate::conf_builder!(
             $dst,
             $src,
             [
@@ -113,6 +113,6 @@ macro_rules! conf_builder_server {
             ]
         );
         let common = &$src.server_common;
-        crate::conf_builder_common!($dst, common);
+        $crate::conf_builder_common!($dst, common);
     }};
 }

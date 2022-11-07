@@ -133,7 +133,7 @@ fn read_tls_conf(conf: &ServerConf) -> Result<Arc<rustls::ServerConfig>, Error> 
 
 fn read_cert_store(path: impl AsRef<Path>) -> Result<Vec<rustls::Certificate>, Error> {
     let path = path.as_ref();
-    let file = fs::File::open(&path).map_err(|e| {
+    let file = fs::File::open(path).map_err(|e| {
         TlsError::ServerCertStore(format!("cannot open '{}': {}", path.display(), e))
     })?;
     let mut reader = io::BufReader::new(file);
@@ -146,7 +146,7 @@ fn read_cert_store(path: impl AsRef<Path>) -> Result<Vec<rustls::Certificate>, E
 
 fn read_cert_key(path: impl AsRef<Path>) -> Result<rustls::PrivateKey, Error> {
     let path = path.as_ref();
-    let file = fs::File::open(&path)
+    let file = fs::File::open(path)
         .map_err(|e| TlsError::ServerCertKey(format!("cannot open '{}': {}", path.display(), e)))?;
     let mut reader = io::BufReader::new(file);
 

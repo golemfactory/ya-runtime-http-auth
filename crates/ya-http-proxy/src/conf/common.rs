@@ -53,7 +53,7 @@ macro_rules! conf_builder {
 #[macro_export]
 macro_rules! conf_builder_common {
     ($dst:ident, $src:ident) => {{
-        crate::conf_builder!(
+        $crate::conf_builder!(
             $dst,
             $src,
             [

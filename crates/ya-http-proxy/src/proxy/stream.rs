@@ -14,6 +14,7 @@ use tokio_rustls::server::TlsStream;
 
 pub type HttpStream = HttpStreamKind<TcpStream>;
 
+#[allow(clippy::large_enum_variant)]
 pub enum HttpStreamKind<T> {
     Plain {
         inner: T,
