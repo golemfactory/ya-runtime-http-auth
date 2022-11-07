@@ -209,7 +209,7 @@ impl Runtime for HttpAuthRuntime {
                         emit_counter(COUNTER_NAME.to_string(), emitter.clone(), total_req as f64)
                             .await;
 
-                        tokio::time::delay_for(COUNTER_PUBLISH_INTERVAL).await;
+                        tokio::time::sleep(COUNTER_PUBLISH_INTERVAL).await;
                     }
                 },
                 reg,
@@ -319,19 +319,17 @@ impl Runtime for HttpAuthRuntime {
     }
 }
 
-fn main() -> anyhow::Result<()> {
-    let runtime =
-        ya_runtime_sdk::build::<HttpAuthRuntime, _, _, _>(HttpAuthEnv::default(), move |ctx| {
-            let api_url = ctx.conf.management_api_url.clone();
-            async move {
-                let client = WebClient::new(api_url)?;
-                let api = ManagementApi::new(client);
-                Ok(HttpAuthRuntime::from(api))
-            }
-        });
-
-    let mut system = actix_rt::System::new("runtime");
-    system.block_on(runtime)
+#[actix_rt::main]
+async fn main() -> anyhow::Result<()> {
+    build::<HttpAuthRuntime, _, _, _>(HttpAuthEnv::default(), move |ctx| {
+        let api_url = ctx.conf.management_api_url.clone();
+        async move {
+            let client = WebClient::new(api_url)?;
+            let api = ManagementApi::new(client);
+            Ok(HttpAuthRuntime::from(api))
+        }
+    })
+    .await
 }
 
 async fn emit_counter(counter_name: String, mut emitter: EventEmitter, value: f64) {

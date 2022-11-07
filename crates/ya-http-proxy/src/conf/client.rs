@@ -45,7 +45,7 @@ pub struct ClientCertConf {
 #[macro_export]
 macro_rules! conf_builder_client {
     ($dst:ident, $src:ident) => {{
-        crate::conf_builder!(
+        $crate::conf_builder!(
             $dst,
             $src,
             [
@@ -62,6 +62,6 @@ macro_rules! conf_builder_client {
         );
 
         let common = &$src.client_common;
-        crate::conf_builder_common!($dst, common);
+        $crate::conf_builder_common!($dst, common);
     }};
 }
