@@ -28,21 +28,26 @@ pub async fn spawn(api: ManagementApi, data_dir: PathBuf) -> anyhow::Result<()> 
             ProxyState::Unknown => match api.get_services().await {
                 Ok(_) => ProxyState::Running,
                 Err(err) => match err {
-                    Error::SendRequestError { .. } => lock
-                        .is_locked()
-                        .then(|| ProxyState::AwaitLock)
-                        .unwrap_or(ProxyState::Lock),
+                    Error::SendRequestError { .. } => {
+                        if lock.is_locked() {
+                            ProxyState::AwaitLock
+                        } else {
+                            ProxyState::Lock
+                        }
+                    }
                     err => anyhow::bail!(err),
                 },
             },
-            ProxyState::Lock => lock
-                .lock()
-                .is_ok()
-                .then(|| ProxyState::Start)
-                .unwrap_or(ProxyState::AwaitLock),
+            ProxyState::Lock => {
+                if lock.lock().is_ok() {
+                    ProxyState::Start
+                } else {
+                    ProxyState::AwaitLock
+                }
+            }
             ProxyState::AwaitLock => {
                 if lock.is_locked() {
-                    tokio::time::delay_for(SLEEP).await;
+                    tokio::time::sleep(SLEEP).await;
                     ProxyState::AwaitLock
                 } else {
                     ProxyState::Unknown
@@ -77,7 +82,7 @@ pub async fn spawn(api: ManagementApi, data_dir: PathBuf) -> anyhow::Result<()> 
                 Ok(_) => ProxyState::Running,
                 Err(err) => match err {
                     Error::SendRequestError { .. } => {
-                        tokio::time::delay_for(SLEEP).await;
+                        tokio::time::sleep(SLEEP).await;
                         ProxyState::AwaitStart
                     }
                     err => anyhow::bail!(err),
