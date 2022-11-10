@@ -2,7 +2,9 @@ use awc::error::{PayloadError, SendRequestError};
 use http::uri::InvalidUri;
 use http::{Method, StatusCode};
 
+/// Specialized Error for proxy Management API
 #[derive(thiserror::Error, Debug)]
+#[allow(missing_docs)]
 pub enum Error {
     #[error("HTTP error requesting {method} {url}: {code}; msg: '{msg}'")]
     SendRequestError {

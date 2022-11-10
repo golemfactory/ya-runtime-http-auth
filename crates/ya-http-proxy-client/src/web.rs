@@ -1,22 +1,34 @@
 use http::{Method, Uri};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
+use std::rc::Rc;
 
 use crate::{Error, Result};
 use ya_http_proxy_model::ErrorResponse;
 
+/// Default management api url.
 pub const DEFAULT_MANAGEMENT_API_URL: &str = "http://127.0.0.1:6668";
+
+/// Environment variable to override default management api url.
+pub const ENV_MANAGEMENT_API_URL: &str = "MANAGEMENT_API_URL";
+
 const MAX_BODY_SIZE: usize = 8 * 1024 * 1024;
 
+/// REST api client abstraction
 #[derive(Clone)]
 pub struct WebClient {
-    url: Uri,
+    url: Rc<Uri>,
     inner: awc::Client,
 }
 
 impl WebClient {
-    pub fn new(url: String) -> Result<Self> {
+    pub fn try_default() -> Result<Self> {
+        Self::new(default_management_api_url().as_ref())
+    }
+
+    pub fn new(url: &str) -> Result<Self> {
         Ok(Self {
-            url: url.parse()?,
+            url: Rc::new(url.parse()?),
             inner: awc::Client::new(),
         })
     }
@@ -85,4 +97,10 @@ impl WebClient {
             msg: response.message,
         })
     }
+}
+
+fn default_management_api_url() -> Cow<'static, str> {
+    std::env::var(ENV_MANAGEMENT_API_URL)
+        .map(Cow::Owned)
+        .unwrap_or_else(|_| Cow::Borrowed(DEFAULT_MANAGEMENT_API_URL))
 }

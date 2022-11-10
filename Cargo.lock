@@ -2540,6 +2540,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "tokio",
  "ya-http-proxy-model",
 ]
 
@@ -2597,7 +2598,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "ya-http-proxy-client",
- "ya-http-proxy-model",
  "ya-runtime-sdk",
 ]
 

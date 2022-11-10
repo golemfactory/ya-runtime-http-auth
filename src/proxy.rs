@@ -5,8 +5,7 @@ use std::time::{Duration, Instant};
 
 use is_executable::IsExecutable;
 
-use ya_http_proxy_client::api::ManagementApi;
-use ya_http_proxy_client::Error;
+use ya_http_proxy_client::{Error, ManagementApi};
 
 use crate::lock::{with_lock_ext, LockFile};
 
