@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use anyhow::Result;
 use awc::Connector;
@@ -112,8 +113,8 @@ fn default_proxy_conf() -> Result<ProxyConf> {
     let cert_key_path = cert_dir.join("server.key");
 
     let mut conf = ProxyConf::default();
-    conf.server.bind_https = Some(SocketAddr::from(([127, 0, 0, 1], 8080)).into());
-    conf.server.bind_https = Some(SocketAddr::from(([127, 0, 0, 1], 8080)).into());
+    conf.server.bind_http = Some(SocketAddr::from(([127, 0, 0, 1], 8080)).into());
+    conf.server.bind_https = None;
     conf.server.server_cert.server_cert_store_path = Some(cert_store_path);
     conf.server.server_cert.server_key_path = Some(cert_key_path);
 
@@ -142,10 +143,11 @@ async fn e2e_requests(client: WebClient) -> anyhow::Result<()> {
 
     let user_name = "user1".to_string();
     let password = "password123".to_string();
+    log::info!("[s] Creating a new service1");
 
     let create_service = model::CreateService {
         name: service_name.clone(),
-        server_name: Default::default(),
+        server_name: vec!["test-server".to_string()],
         bind_https: Some(service_https.into()),
         bind_http: Some(service_http.into()),
         cert: Default::default(),
@@ -162,15 +164,23 @@ async fn e2e_requests(client: WebClient) -> anyhow::Result<()> {
         username: user_name.clone(),
         password: password.clone(),
     };
+    log::info!("[s] Creating a new service2");
 
-    let services_get: Vec<model::Service> = client.get("services").await?;
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    let services_get: Vec<model::Service> = client.get("services").await.unwrap();
     assert_eq!(0, services_get.len());
 
-    println!("[s] Creating a new service");
-    let service_post: model::Service = client.post("services", &create_service).await?;
-    println!("[s] Created service: {:?}", service_post);
-    let service_get: model::Service = client.get(format!("services/{}", service_name)).await?;
-    println!("[s] Retrieved service: {:?}", service_get);
+    log::info!("[s] Creating a new service3");
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    let service_post: model::Service = client.post("services", &create_service).await.unwrap();
+    log::info!("[s] Created service: {:?}", service_post);
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    let service_get: model::Service = client
+        .get(format!("services/{}", service_name))
+        .await
+        .unwrap();
+    log::info!("[s] Retrieved service: {:?}", service_get);
+    tokio::time::sleep(Duration::from_millis(1000)).await;
 
     let services_get: Vec<model::Service> = client.get("services").await?;
     assert_eq!(1, services_get.len());
@@ -263,7 +273,8 @@ async fn e2e() -> anyhow::Result<()> {
 
     let client = WebClient::new(management_url)?;
     let result = e2e_requests(client.clone()).await;
-    let _ = client.post::<_, (), _>("control/shutdown", &()).await;
+    //Do not call shutdown here, because it will stop application without returning marking test as succeeded, even if it fails
+    // let _ = client.post::<_, (), _>("control/shutdown", &()).await;
 
     result
 }
