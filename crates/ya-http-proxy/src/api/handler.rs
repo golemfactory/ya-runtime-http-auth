@@ -11,6 +11,7 @@ type HandlerResult = Result<Response<Body>, ApiErrorKind>;
 
 /// Lists services
 pub async fn get_services(req: Request<Body>) -> HandlerResult {
+    log::debug!("get_services");
     let manager: &ProxyManager = req.data().unwrap();
     let proxies = manager.proxies();
 
@@ -23,19 +24,37 @@ pub async fn get_services(req: Request<Body>) -> HandlerResult {
         })
         .await;
 
+    log::debug!("Get services returned: {:?}", vec);
     Response::object(&vec)
 }
 
 /// Creates a new service
 pub async fn post_services(req: Request<Body>) -> HandlerResult {
+    log::debug!("post_services 1");
     let (parts, body) = req.into_parts();
+    log::debug!("post_services 2");
     let manager: &ProxyManager = parts.data().unwrap();
+    log::debug!("post_services 3");
     let body = hyper::body::to_bytes(body).await?;
 
-    let mut create: model::CreateService = serde_json::from_slice(body.as_ref())?;
-    let proxy = manager.get_or_spawn(&mut create).await?;
+    log::debug!("post_services 4");
+    let mut create: model::CreateService = serde_json::from_slice(body.as_ref()).map_err(
+        |e| {
+            log::error!("Failed to parse request body: {}", e);
+            e
+        },
+    )?;
+    log::debug!("post_services 5");
+    let proxy = manager.get_or_spawn(&mut create).await.map_err(
+        |e| {
+            log::error!("Failed to create service: {}", e);
+            e
+        },
+    )?;
+    log::debug!("post_services 6");
     let service: model::Service = proxy.add(create).await?;
 
+    log::debug!("post_services returned {:?}", service);
     Response::object(&service)
 }
 

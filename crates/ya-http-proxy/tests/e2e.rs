@@ -172,7 +172,7 @@ async fn e2e_requests(client: WebClient) -> anyhow::Result<()> {
 
     log::info!("[s] Creating a new service3");
     tokio::time::sleep(Duration::from_millis(1000)).await;
-    let service_post: model::Service = client.post("services", &create_service).await.unwrap();
+    let service_post: model::Service = client.post("services", &create_service).await?;
     log::info!("[s] Created service: {:?}", service_post);
     tokio::time::sleep(Duration::from_millis(1000)).await;
     let service_get: model::Service = client.get(format!("services/{}", service_name)).await.unwrap();
@@ -252,7 +252,7 @@ async fn e2e_requests(client: WebClient) -> anyhow::Result<()> {
 }
 
 async fn e2e() -> anyhow::Result<()> {
-    let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "info".into());
+    let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "debug".into());
     env::set_var("RUST_LOG", &log_level);
     env_logger::init();
 
@@ -270,7 +270,9 @@ async fn e2e() -> anyhow::Result<()> {
 
     let client = WebClient::new(management_url)?;
     let result = e2e_requests(client.clone()).await;
-    let _ = client.post::<_, (), _>("control/shutdown", &()).await;
+    println!("e2e_requests result: {:?}", result);
+    //let _ = client.post::<_, (), _>("control/shutdown", &()).await;
+    println!("e2e_requests result2: {:?}", result);
 
     result
 }
@@ -287,9 +289,12 @@ fn test_e2e() -> anyhow::Result<()> {
 
     let task_set = tokio::task::LocalSet::new();
     match task_set.block_on(&rt, e2e()) {
-        Ok(v) => Ok(v),
+        Ok(v) => {
+            log::error!("e2e test finished: {:?}", v);
+            Ok(v)
+        },
         Err(e) => {
-            eprintln!("Error: {}", e);
+            log::error!("e2e test error finished: {:?}", e);
             Err(e)
         }
     }

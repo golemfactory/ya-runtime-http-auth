@@ -17,6 +17,8 @@ use crate::proxy::stream::HttpStream;
 pub async fn listen_http(
     conf: &ServerConf,
 ) -> Result<Option<Builder<impl Accept<Conn = HttpStream, Error = std::io::Error>>>, Error> {
+    log::info!("listen http {:?}", conf.bind_http);
+
     let addrs = match conf.bind_http.as_ref() {
         Some(addrs) => addrs.to_vec(),
         None => return Ok(None),
@@ -57,6 +59,7 @@ pub async fn listen_http(
 pub async fn listen_https(
     conf: &ServerConf,
 ) -> Result<Option<Builder<impl Accept<Conn = HttpStream, Error = std::io::Error>>>, Error> {
+    log::info!("listen_https {:?}", conf.bind_https);
     let addrs = match conf.bind_https.as_ref() {
         Some(addrs) => addrs.to_vec(),
         None => return Ok(None),
