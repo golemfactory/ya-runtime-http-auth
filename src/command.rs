@@ -4,7 +4,7 @@ use serde::Serialize;
 use structopt::StructOpt;
 use strum::VariantNames;
 
-use ya_http_proxy_model::{AuthMethod, CreateUser, PubService, User, UserEndpointStats};
+use ya_http_proxy_client::model::{AuthMethod, CreateUser, PubService, User, UserEndpointStats};
 use ya_runtime_sdk::error::Error as SdkError;
 
 use crate::HttpAuth;

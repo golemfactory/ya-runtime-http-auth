@@ -1,8 +1,3 @@
-mod command;
-mod config;
-mod lock;
-mod proxy;
-
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -15,18 +10,23 @@ use serde::{Deserialize, Serialize};
 use serde_default::DefaultFromSerde;
 use structopt::StructOpt;
 use tokio::sync::RwLock;
-
-use ya_http_proxy_client::api::ManagementApi;
-use ya_http_proxy_client::web::{WebClient, DEFAULT_MANAGEMENT_API_URL};
-use ya_http_proxy_client::Error;
-use ya_http_proxy_model::{CreateService, GlobalStats, Service, User};
 use ya_runtime_sdk::cli::parse_cli;
 use ya_runtime_sdk::env::Env;
 use ya_runtime_sdk::error::Error as SdkError;
 use ya_runtime_sdk::serialize::json;
 use ya_runtime_sdk::*;
 
+use ya_http_proxy_client::{
+    model::{CreateService, GlobalStats, Service, User},
+    Error, ManagementApi,
+};
+
 use crate::command::RuntimeCommand;
+
+mod command;
+mod config;
+mod lock;
+mod proxy;
 
 type RuntimeCli = <HttpAuthRuntime as RuntimeDef>::Cli;
 
@@ -34,7 +34,6 @@ pub const PROPERTY_PREFIX: &str = "golem.runtime.http-auth";
 const COUNTER_NAME: &str = "http-auth.requests";
 const COUNTER_PUBLISH_INTERVAL: Duration = Duration::from_secs(2);
 
-const MANAGEMENT_API_URL_ENV_VAR: &str = "MANAGEMENT_API_URL";
 const MANAGEMENT_API_MAX_CONCURRENT_REQUESTS: usize = 3;
 
 #[derive(RuntimeDef)]
@@ -119,8 +118,8 @@ pub struct HttpAuthCli {
 pub struct HttpAuthConf {
     #[serde(default = "default_data_dir")]
     pub data_dir: PathBuf,
-    #[serde(default = "default_management_api_url")]
-    pub management_api_url: String,
+    #[serde(default)]
+    pub management_api_url: Option<String>,
     #[serde(default)]
     pub service_lookup_dirs: Vec<PathBuf>,
 }
@@ -132,11 +131,6 @@ fn default_data_dir() -> PathBuf {
         None => std::env::temp_dir(),
     }
     .join(crate_name)
-}
-
-fn default_management_api_url() -> String {
-    std::env::var(MANAGEMENT_API_URL_ENV_VAR)
-        .unwrap_or_else(|_| DEFAULT_MANAGEMENT_API_URL.to_string())
 }
 
 impl Env<RuntimeCli> for HttpAuthEnv {
@@ -324,9 +318,11 @@ async fn main() -> anyhow::Result<()> {
     build::<HttpAuthRuntime, _, _, _>(HttpAuthEnv::default(), move |ctx| {
         let api_url = ctx.conf.management_api_url.clone();
         async move {
-            let client = WebClient::new(api_url)?;
-            let api = ManagementApi::new(client);
-            Ok(HttpAuthRuntime::from(api))
+            Ok(HttpAuthRuntime::from(if let Some(url) = api_url {
+                ManagementApi::try_from_url(&url)?
+            } else {
+                ManagementApi::try_default()?
+            }))
         }
     })
     .await

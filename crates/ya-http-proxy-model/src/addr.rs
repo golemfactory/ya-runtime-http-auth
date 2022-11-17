@@ -12,19 +12,31 @@ use crate::deser::one_or_many::OneOrManyVisitor;
 pub struct Addresses(Vec<SocketAddr>);
 
 impl Addresses {
-    pub fn new(addrs: Vec<SocketAddr>) -> Self {
+    /// Address collection from iterable object.
+    ///
+    /// ### Example
+    /// ```
+    /// use std::net::SocketAddr;
+    /// use ya_http_proxy_model::Addresses;
+    /// let addrs = Addresses::new(["127.0.0.1:8080".parse().unwrap()]);
+    /// ```
+    ///
+    pub fn new<I: IntoIterator<Item = SocketAddr>>(addrs: I) -> Self {
         Addresses::default() + addrs
     }
 
+    /// Set of port numbers for given address.
     pub fn ports(&self) -> HashSet<u16> {
         self.0.iter().map(|a| a.port()).collect()
     }
 
+    /// Check if collection is empty.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
+    /// Converts collection to `Vec`.
     #[inline]
     pub fn to_vec(&self) -> Vec<SocketAddr> {
         self.0.clone()

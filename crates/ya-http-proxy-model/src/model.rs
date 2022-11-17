@@ -38,6 +38,7 @@ impl Default for AuthMethod {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Service {
+    #[allow(missing_docs)]
     #[serde(flatten)]
     pub inner: CreateService,
     /// Creation date
@@ -54,15 +55,23 @@ impl From<(CreateService, DateTime<Utc>)> for Service {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PubService {
+    /// Service name.
     pub name: String,
+    /// Host name. (for virtual name server).
     pub server_name: Vec<String>,
+    /// Time when service was created.
     pub created_at: DateTime<Utc>,
+    /// Set of ports for `https` connections.
     pub port_https: HashSet<u16>,
+    /// Set of ports for `http` connections.
     pub port_http: HashSet<u16>,
+    /// SSL certificate hash.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cert_hash: Option<String>,
+    /// Service timeout rules.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeouts: Option<Timeouts>,
+    /// How many cpu threads should be started for given service.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpu_threads: Option<usize>,
 }
@@ -120,14 +129,17 @@ pub struct CreateService {
 }
 
 impl CreateService {
+    /// Collection of all service listen addresses for `https` & `http`.
     pub fn addresses(&self) -> Addresses {
         self.bind_https.clone().unwrap_or_default() + self.bind_http.clone().unwrap_or_default()
     }
 
+    /// Collection of listen port for `https` addresses.
     pub fn https_ports(&self) -> HashSet<u16> {
         Self::ports(&self.bind_https)
     }
 
+    /// Collection of listen port for `http` addresses.
     pub fn http_ports(&self) -> HashSet<u16> {
         Self::ports(&self.bind_http)
     }
@@ -155,9 +167,12 @@ pub struct CreateServiceUser {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateServiceCert {
+    /// Hash Sha3_256 of ssl certificate.
     #[serde(default)]
     pub hash: String,
+    /// Certificate path on disk.
     pub path: PathBuf,
+    /// certificate key.
     pub key_path: PathBuf,
 }
 
@@ -173,7 +188,9 @@ impl Eq for CreateServiceCert {}
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateUser {
+    /// Http auth user name.
     pub username: String,
+    /// Password for new user.
     pub password: String,
 }
 
@@ -181,7 +198,9 @@ pub struct CreateUser {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct User {
+    /// User name.
     pub username: String,
+    /// Time when user was created.
     pub created_at: DateTime<Utc>,
 }
 
@@ -189,6 +208,7 @@ pub struct User {
 #[derive(Clone, Default, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserStats {
+    /// Number of user requests.
     pub requests: usize,
 }
 
@@ -201,8 +221,10 @@ pub struct UserEndpointStats(pub HashMap<String, usize>);
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Timeouts {
+    /// Timeout for requests.
     #[serde(with = "deser::duration::opt_ms")]
     pub request_timeout: Option<Duration>,
+    /// Max wait time for response.
     #[serde(with = "deser::duration::opt_ms")]
     pub response_timeout: Option<Duration>,
 }
@@ -211,6 +233,7 @@ pub struct Timeouts {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ErrorResponse {
+    /// Human readable error message.
     pub message: String,
 }
 
@@ -219,8 +242,11 @@ pub struct ErrorResponse {
 #[derive(Clone, Default, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalStats {
+    /// Number of registered users.
     pub users: usize,
+    /// Number of created services.
     pub services: usize,
+    #[doc(hidden)]
     pub requests: UserStats,
 }
 

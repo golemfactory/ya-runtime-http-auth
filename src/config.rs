@@ -6,7 +6,7 @@ use std::fs::{read_dir, File};
 use std::io::BufReader;
 use std::path::PathBuf;
 
-use ya_http_proxy_model::CreateService;
+use ya_http_proxy_client::model::CreateService;
 use ya_runtime_sdk::serialize::{json, toml, yaml};
 use ya_runtime_sdk::Context;
 
