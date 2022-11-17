@@ -270,7 +270,7 @@ async fn e2e() -> anyhow::Result<()> {
 
     let client = WebClient::new(management_url)?;
     let result = e2e_requests(client.clone()).await;
-    // let _ = client.post::<_, (), _>("control/shutdown", &()).await;
+    // let _ = client.post::<_, (), _>("control/shutdown", &()).await; 
 
     result
 }
