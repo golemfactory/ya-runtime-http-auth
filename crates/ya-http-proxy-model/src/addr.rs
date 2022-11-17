@@ -18,7 +18,7 @@ impl Addresses {
     /// ```
     /// use std::net::SocketAddr;
     /// use ya_http_proxy_model::Addresses;
-    /// let addrs = Addresses::new(["127.0.0.1".parse().unwrap()]);
+    /// let addrs = Addresses::new(["127.0.0.1:8080".parse().unwrap()]);
     /// ```
     ///
     pub fn new<I: IntoIterator<Item = SocketAddr>>(addrs: I) -> Self {
