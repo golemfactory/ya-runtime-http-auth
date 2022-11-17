@@ -18,7 +18,7 @@ use ya_runtime_sdk::*;
 
 use ya_http_proxy_client::{
     model::{CreateService, GlobalStats, Service, User},
-    Error, ManagementApi
+    Error, ManagementApi,
 };
 
 use crate::command::RuntimeCommand;

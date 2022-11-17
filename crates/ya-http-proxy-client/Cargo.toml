@@ -26,4 +26,5 @@ actix-tls = "3.0.3"
 h2="0.3.15"
 
 [dev-dependencies]
-tokio = { version = "1", features=["macros", "rt-multi-thread"]}
+actix-rt = "2.7.0"
+clap = { version = "4.0.24", features=["derive"] }

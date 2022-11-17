@@ -10,8 +10,6 @@ use tokio::sync::RwLock;
 
 use crate::proxy::{ProxyState, ProxyStats};
 
-const EMPTY_STR: &str = "";
-
 #[inline(always)]
 pub async fn forward_req(
     mut req: Request<Body>,
@@ -111,18 +109,31 @@ fn merge_path_and_query(req_uri: &mut Uri, proxy_from: Uri, proxy_to: Uri) -> Re
     let req_str = extract_req(&req_paq);
     let from_str = extract_from(&from_paq);
 
-    let f = from_str.len();
-    let f = if &req_str[..f] == from_str { f } else { 0 };
-    let req_str = &req_str[f..];
+    fn strip_or_stay<'a>(s: &'a str, p: &str) -> &'a str {
+        s.strip_prefix(p).unwrap_or(s)
+    }
+
+    let (is_root, req_str) = {
+        let r = strip_or_stay(req_str, from_str);
+        (r == "/", strip_or_stay(r, "/"))
+    };
 
     let paq = if let Some(to) = to_paq {
-        let merge = [to.as_str(), req_str].concat();
-        let len = merge.len();
-        if len > 1 && &merge[len - 2..] == "//" {
-            PathAndQuery::try_from(&merge[..len - 1])
+        let to_str = to.as_str();
+        let merge = if req_str.is_empty() {
+            if is_root && !to_str.ends_with('/') {
+                [to.as_str(), "/"].concat()
+            } else {
+                to.to_string()
+            }
+        } else if to_str.ends_with('/') {
+            [to.as_str(), req_str].concat()
+        } else if is_root {
+            [to_str, "/"].concat()
         } else {
-            PathAndQuery::try_from(merge)
-        }
+            [to_str, "/", req_str].concat()
+        };
+        PathAndQuery::try_from(merge)
     } else {
         PathAndQuery::try_from(req_str)
     }
@@ -145,7 +156,7 @@ fn extract_req<'a>(paq: &'a Option<&PathAndQuery>) -> &'a str {
 #[inline]
 fn extract_from<'a>(paq: &'a Option<&PathAndQuery>) -> &'a str {
     match paq.map(|p| p.as_str()) {
-        None | Some("") | Some("/") => EMPTY_STR,
+        None | Some("") | Some("/") => "/",
         Some(s) => {
             let e = s.len() - 1;
             if &s[e..] == "/" {
@@ -190,74 +201,117 @@ fn extract_username(decoded_auth: &str) -> Result<&str, ()> {
 mod tests {
     use super::merge_path_and_query;
     use hyper::http::Uri;
+    use serde::de::StdError;
 
     #[test]
     fn merge_uri_paths() -> anyhow::Result<()> {
-        let verify = |from: &Uri, to: &Uri, uri: &str, expected: &str| {
-            let mut req_uri = Uri::try_from(uri).unwrap();
-            let expected_uri = Uri::try_from(expected).unwrap();
+        fn verify<T1, T2>(from: T1, to: T2, request: &str, expect: &str) -> anyhow::Result<()>
+        where
+            T1: TryInto<Uri>,
+            T2: TryInto<Uri>,
+            <T1 as TryInto<Uri>>::Error: StdError + Send + Sync + 'static,
+            <T2 as TryInto<Uri>>::Error: StdError + Send + Sync + 'static,
+        {
+            let from_uri = from.try_into()?;
+            let to_uri = to.try_into()?;
+            let mut req_uri = request.parse()?;
+            let expect_uri: Uri = expect.parse()?;
+            merge_path_and_query(&mut req_uri, from_uri, to_uri).map_err(anyhow::Error::msg)?;
 
-            merge_path_and_query(&mut req_uri, from.clone(), to.clone()).unwrap();
+            assert_eq!(req_uri, expect_uri);
+            Ok(())
+        }
 
-            println!("from {from} to {to} | {req_uri} vs {expected}");
-            assert_eq!(req_uri, expected_uri);
-            println!("-- ok");
-        };
-
-        let from = Uri::from_static("/");
-        let to = Uri::try_from("http://127.0.0.1").unwrap();
-        verify(&from, &to, "http://1.0.0.1", "http://127.0.0.1/");
-        verify(&from, &to, "http://1.0.0.1/", "http://127.0.0.1/");
-
-        let from = Uri::from_static("/");
-        let to = Uri::try_from("http://127.0.0.1/to").unwrap();
-        verify(&from, &to, "http://1.0.0.1", "http://127.0.0.1/to/");
-        verify(&from, &to, "http://1.0.0.1/", "http://127.0.0.1/to/");
-
-        let from = Uri::from_static("/");
-        let to = Uri::try_from("http://127.0.0.1/to/").unwrap();
-        verify(&from, &to, "http://1.0.0.1", "http://127.0.0.1/to/");
-        verify(&from, &to, "http://1.0.0.1/", "http://127.0.0.1/to/");
-
-        let from = Uri::from_static("/sub");
-        let to = Uri::try_from("http://127.0.0.1/").unwrap();
-        verify(&from, &to, "http://1.0.0.1/sub", "http://127.0.0.1/");
-        verify(&from, &to, "http://1.0.0.1/sub/", "http://127.0.0.1/");
-
-        let from = Uri::from_static("/sub/2");
-        let to = Uri::try_from("http://127.0.0.1/to").unwrap();
-        verify(&from, &to, "http://1.0.0.1/sub/2", "http://127.0.0.1/to");
-        verify(&from, &to, "http://1.0.0.1/sub/2/", "http://127.0.0.1/to/");
-
-        let from = Uri::from_static("/");
-        let to = Uri::try_from("http://127.0.0.1/to").unwrap();
         verify(
-            &from,
-            &to,
+            "/",
+            "http://127.0.0.1:5050/",
+            "/eth/v1/node/syncing",
+            "http://127.0.0.1:5050/eth/v1/node/syncing",
+        )?;
+        verify(
+            "/",
+            "http://127.0.0.1",
+            "http://1.0.0.1",
+            "http://127.0.0.1/",
+        )?;
+        verify(
+            "/",
+            "http://127.0.0.1/to",
+            "http://1.0.0.1/",
+            "http://127.0.0.1/to",
+        )?;
+        verify(
+            "/",
+            "http://127.0.0.1/to/",
+            "http://1.0.0.1",
+            "http://127.0.0.1/to/",
+        )?;
+        verify(
+            "/",
+            "http://127.0.0.1/to/",
+            "http://1.0.0.1/",
+            "http://127.0.0.1/to/",
+        )?;
+
+        verify(
+            "/sub",
+            "http://127.0.0.1/",
+            "http://1.0.0.1/sub",
+            "http://127.0.0.1/",
+        )?;
+        verify(
+            "/sub",
+            "http://127.0.0.1/",
+            "http://1.0.0.1/sub/",
+            "http://127.0.0.1/",
+        )?;
+
+        verify(
+            "/sub/2",
+            "http://127.0.0.1/to",
+            "http://1.0.0.1/sub/2",
+            "http://127.0.0.1/to",
+        )?;
+
+        verify(
+            "/sub/2",
+            "http://127.0.0.1/to",
+            "http://1.0.0.1/sub/2/test",
+            "http://127.0.0.1/to/test",
+        )?;
+        verify(
+            "/sub/2",
+            "http://127.0.0.1/to",
+            "http://1.0.0.1/sub/2/",
+            "http://127.0.0.1/to/",
+        )?;
+
+        verify(
+            "/",
+            "http://127.0.0.1/to",
             "http://1.0.0.1/resource",
             "http://127.0.0.1/to/resource",
-        );
+        )?;
+
         verify(
-            &from,
-            &to,
+            "/",
+            "http://127.0.0.1/to",
             "http://1.0.0.1/resource/",
             "http://127.0.0.1/to/resource/",
-        );
+        )?;
 
-        let from = Uri::from_static("/sub/2");
-        let to = Uri::try_from("http://127.0.0.1/to").unwrap();
         verify(
-            &from,
-            &to,
+            "/sub/2",
+            "http://127.0.0.1/to",
             "http://1.0.0.1/sub/2/resource",
             "http://127.0.0.1/to/resource",
-        );
+        )?;
         verify(
-            &from,
-            &to,
+            "/sub/2",
+            "http://127.0.0.1/to",
             "http://1.0.0.1/sub/2/resource/",
             "http://127.0.0.1/to/resource/",
-        );
+        )?;
 
         Ok(())
     }
