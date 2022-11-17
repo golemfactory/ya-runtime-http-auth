@@ -147,7 +147,7 @@ async fn e2e_requests(client: WebClient) -> anyhow::Result<()> {
 
     let create_service = model::CreateService {
         name: service_name.clone(),
-        server_name: Default::default(),
+        server_name: vec!["test-server".to_string()],
         bind_https: Some(service_https.into()),
         bind_http: Some(service_http.into()),
         cert: Default::default(),
@@ -270,7 +270,8 @@ async fn e2e() -> anyhow::Result<()> {
 
     let client = WebClient::new(management_url)?;
     let result = e2e_requests(client.clone()).await;
-    // let _ = client.post::<_, (), _>("control/shutdown", &()).await; 
+	//Do not call shutdown here, because it will stop application without returning marking test as succeeded, even if it fails
+    // let _ = client.post::<_, (), _>("control/shutdown", &()).await;
 
     result
 }
