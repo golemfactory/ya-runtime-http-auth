@@ -175,7 +175,10 @@ async fn e2e_requests(client: WebClient) -> anyhow::Result<()> {
     let service_post: model::Service = client.post("services", &create_service).await.unwrap();
     log::info!("[s] Created service: {:?}", service_post);
     tokio::time::sleep(Duration::from_millis(1000)).await;
-    let service_get: model::Service = client.get(format!("services/{}", service_name)).await.unwrap();
+    let service_get: model::Service = client
+        .get(format!("services/{}", service_name))
+        .await
+        .unwrap();
     log::info!("[s] Retrieved service: {:?}", service_get);
     tokio::time::sleep(Duration::from_millis(1000)).await;
 
@@ -270,7 +273,7 @@ async fn e2e() -> anyhow::Result<()> {
 
     let client = WebClient::new(management_url)?;
     let result = e2e_requests(client.clone()).await;
-	//Do not call shutdown here, because it will stop application without returning marking test as succeeded, even if it fails
+    //Do not call shutdown here, because it will stop application without returning marking test as succeeded, even if it fails
     // let _ = client.post::<_, (), _>("control/shutdown", &()).await;
 
     result
