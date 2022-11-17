@@ -1,7 +1,7 @@
 [package]
 name = "ya-runtime-http-auth"
 description = "HTTP authentication runtime for exposing services on Golem Network"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Golem Factory <contact@golem.network>"]
 homepage = "https://github.com/golemfactory/ya-runtime-http-auth"
 repository = "https://github.com/golemfactory/ya-runtime-http-auth"
@@ -21,7 +21,7 @@ nix = "0.23"
 [dependencies]
 #ya-runtime-sdk = { version = "0.4.0", features = ["macros"] }
 ya-runtime-sdk = { git = "https://github.com/golemfactory/ya-runtime-sdk.git", rev = "85a88e5bd76fedd9ff9904952bc256856535e3cb", features = ["macros"]}
-ya-http-proxy-client = { version = "0.2", path = "crates/ya-http-proxy-client" }
+ya-http-proxy-client = { version = "0.3", path = "crates/ya-http-proxy-client" }
 
 actix-rt = "2.7.0"
 anyhow = "1.0"

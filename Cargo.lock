@@ -2534,7 +2534,7 @@ checksum = "f40009d85759725a34da6d89a94e63d7bdc50a862acf0dbc7c8e488f1edcb6f5"
 
 [[package]]
 name = "ya-http-proxy"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "actix-rt",
  "actix-web",
@@ -2570,7 +2570,7 @@ dependencies = [
 
 [[package]]
 name = "ya-http-proxy-client"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "actix-http",
  "actix-rt",
@@ -2590,7 +2590,7 @@ dependencies = [
 
 [[package]]
 name = "ya-http-proxy-model"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "http",
@@ -2619,7 +2619,7 @@ dependencies = [
 
 [[package]]
 name = "ya-runtime-http-auth"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "actix-rt",
  "anyhow",
